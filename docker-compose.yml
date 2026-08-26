@@ -1,0 +1,349 @@
+name: ai-platform
+# Orchestrates all services + shared infra for local dev / server testing,
+# plus a self-hosted Langfuse (v3) tracing stack.
+#
+# Credentials used below are DEV-ONLY DEFAULTS (see CREDENTIALS.md at the repo
+# root for the full list). Change every one of them before any shared/staging/
+# production deployment.
+#
+# HOST PORT NOTE: chosen to avoid colliding with other projects that may
+# already be running on the same server (e.g. an existing "infra-*" compose
+# stack, or a "postgres_db" container publishing 5432). Internal-only
+# services (postgres, redis, qdrant, and every Langfuse infra component
+# except langfuse-web/minio) are bound to 127.0.0.1 only — reachable by every
+# other container in THIS project via the internal Docker network regardless
+# of host port mappings; the host mapping is purely a convenience for local
+# debugging and should never be reachable from outside the host. The three
+# API services, this project's MinIO, langfuse-web, and langfuse's own MinIO
+# are bound to 0.0.0.0 since they need to be reachable from outside the host
+# (frontend / reverse proxy / browser dashboard / presigned media URLs).
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # POSTGRES_DB intentionally omitted — the init script below creates all
+      # three service databases (chat_agent_db, file_processing_db, knowledge_db)
+      # on first container startup. There is no built-in "multiple databases" env
+      # var on the official postgres image; this is the standard workaround.
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres-init:/docker-entrypoint-initdb.d:ro
+    ports: ["127.0.0.1:5433:5432"]  # local debugging only (psql -h 127.0.0.1 -p 5433); never public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["127.0.0.1:6389:6379"]  # local debugging only; never public. Moved off 6379 defensively.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-06-13T11-33-47Z-cpuv1
+    # ^ this server's CPU doesn't support the x86-64-v2 instruction set that
+    # recent MinIO builds require by default (confirmed by "Fatal glibc error:
+    # CPU does not support x86-64-v2" on startup) — the "-cpuv1" tag suffix is
+    # MinIO's official build variant for older CPUs. An existing container on
+    # this same host (infra-minio-1) already uses this exact tag successfully.
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    # Remapped off the default 9000/9001 — an existing infra-minio-1 container
+    # already occupies those on this host. The API port (9010) must be
+    # reachable from wherever end users' browsers load generated-image/
+    # extracted-image URLs from — S3_PUBLIC_BASE_URL in chat-agent-service/.env
+    # and file-processing-service/.env must match.
+    ports: ["9010:9000", "9011:9001"]
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant
+    ports: ["127.0.0.1:6333:6333"]  # local debugging only (dashboard); never public
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  chat-agent-service:
+    build:
+      context: .
+      dockerfile: chat-agent-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports: ["8101:8000"]  # was 8001 — collided with an existing infra-logger-receiver container
+    env_file: ./chat-agent-service/.env
+
+  # NOTE: chat-agent-service currently has no Celery worker of its own — all work
+  # (LLM calls, MCP tool calls, retrieval) happens inline within the async request/
+  # SSE-stream lifecycle via LangGraph, not as background tasks. This entry is kept
+  # commented as a placeholder in case a future need arises (e.g. very long-running
+  # tool calls that should survive an HTTP disconnect).
+  # chat-agent-worker:
+  #   build:
+  #     context: .
+  #     dockerfile: chat-agent-service/Dockerfile
+  #   command: celery -A app.workers.celery_app worker -Q chat -l info
+  #   depends_on: [redis, postgres]
+
+  file-processing-service:
+    build:
+      context: .
+      dockerfile: file-processing-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports: ["8102:8000"]  # was 8002 — collided with an existing infra-feature-extraction-api container
+    env_file: ./file-processing-service/.env
+
+  file-processing-worker:
+    build:
+      context: .
+      dockerfile: file-processing-service/Dockerfile
+    command: celery -A app.workers.celery_app worker -Q file_processing -l info --concurrency=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file: ./file-processing-service/.env
+
+  knowledge-service:
+    build:
+      context: .
+      dockerfile: knowledge-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    ports: ["8103:8000"]  # was 8003 — collided with an existing infra-outlier-service-api container
+    env_file: ./knowledge-service/.env
+
+  knowledge-worker:
+    build:
+      context: .
+      dockerfile: knowledge-service/Dockerfile
+    command: celery -A app.workers.celery_app worker -Q embedding -l info --concurrency=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    env_file: ./knowledge-service/.env
+
+  # =========================================================================
+  # Self-hosted Langfuse (v3) — LLM tracing/observability, consumed by
+  # chat-agent-service's app/observability/langfuse_client.py.
+  #
+  # 6 containers total (Langfuse v3's architecture: web + worker + Postgres +
+  # ClickHouse for trace storage + Redis for the ingestion queue + S3/MinIO
+  # for blob storage). All service names are prefixed "langfuse-" so they
+  # never collide with this project's OWN postgres/redis/minio services
+  # above — these are two entirely separate Postgres/Redis/MinIO instances
+  # serving two different purposes, not shared.
+  #
+  # First-time setup: after `docker compose up -d`, open
+  # http://<server>:3000, create an account (first account = admin), create
+  # a project, and copy its Public/Secret API keys into
+  # chat-agent-service/.env as LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY,
+  # with LANGFUSE_HOST=http://<server>:3000 (or a reverse-proxied domain).
+  # =========================================================================
+
+  langfuse-postgres:
+    image: postgres:17
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: oygHsyTH5S4hhBBJ2qfJ6UyS3OgbTVLy  # CHANGEME before real production use
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    ports: ["127.0.0.1:5434:5432"]  # local debugging only; also avoids colliding with an existing postgres_db container on 5432
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    # ^ this server's CPU doesn't support instructions required by recent
+    # ClickHouse builds ("Illegal instruction (core dumped)") — same root
+    # cause as the MinIO/numpy CPU issues hit earlier. 24.3 is an older LTS
+    # release built with a lower CPU baseline.
+    restart: always
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ZpjxR3ONJUnHFYyg3tp3UqjpStXVwH_x  # CHANGEME before real production use
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9002:9000"  # remapped from ClickHouse's default 9000 — collides with an existing infra-minio-1 container bound to 0.0.0.0:9000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  langfuse-minio:
+    image: minio/minio:RELEASE.2025-06-13T11-33-47Z-cpuv1  # same CPU-compatibility note as the main `minio` service above
+    restart: always
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC  # CHANGEME before real production use
+    ports:
+      - "9090:9000"          # must stay public — Langfuse's own docs require this for media uploads
+      - "127.0.0.1:9091:9001"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+  langfuse-redis:
+    image: redis:7
+    restart: always
+    command: >
+      --requirepass SDROZzG7_MibMRBE2avimBdIAe3YWTJ2
+      --maxmemory-policy noeviction
+    ports: ["127.0.0.1:6379:6379"]  # local debugging only; never public
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    restart: always
+    depends_on: &langfuse-depends-on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+    ports: ["127.0.0.1:3030:3030"]
+    environment: &langfuse-worker-env
+      NEXTAUTH_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:oygHsyTH5S4hhBBJ2qfJ6UyS3OgbTVLy@langfuse-postgres:5432/postgres
+      SALT: nt2mRKXtwA4Z40QNXELlQg==
+      ENCRYPTION_KEY: b49552c2ea70c45b5ce454fe1e851e0cdc15a139e7e31385b566c4b081a0ecff
+      TELEMETRY_ENABLED: "true"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ZpjxR3ONJUnHFYyg3tp3UqjpStXVwH_x
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_USE_AZURE_BLOB: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: langfuse
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: exports/
+      LANGFUSE_S3_BATCH_EXPORT_REGION: auto
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: SDROZzG7_MibMRBE2avimBdIAe3YWTJ2
+      REDIS_TLS_ENABLED: "false"
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    restart: always
+    depends_on: *langfuse-depends-on
+    ports: ["3000:3000"]  # public — this is the Langfuse dashboard URL
+    environment:
+      <<: *langfuse-worker-env
+      NEXTAUTH_SECRET: 2YxFnWGRcdN+enICi+stDMKqtyu+mJp7rwWfKBlFmUE=
+
+  # ---- Future / placeholder services (scaffolded, not implemented yet) ----
+  telegram-gateway:
+    build: ./gateways/telegram-gateway
+    profiles: ["future"]
+    depends_on: [chat-agent-service]
+
+  whatsapp-gateway:
+    build: ./gateways/whatsapp-gateway
+    profiles: ["future"]
+    depends_on: [chat-agent-service]
+
+  multi-agent-orchestrator-service:
+    build: ./multi-agent-orchestrator-service
+    profiles: ["future"]
+    depends_on: [chat-agent-service]
+
+volumes:
+  pg_data:
+  minio_data:
+  qdrant_data:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:
+  langfuse_redis_data:

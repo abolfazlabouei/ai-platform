@@ -1,0 +1,46 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+starlette==0.41.3
+
+# --- LangGraph / LangChain ---
+langgraph==0.2.62
+langgraph-checkpoint-postgres==2.0.13
+langchain-core>=0.3.36,<0.4
+langchain-mcp-adapters==0.0.5
+langchain-anthropic==0.3.4
+langchain-openai==0.3.1
+
+# --- DB ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+psycopg[binary]==3.2.3
+
+# --- Redis ---
+redis==5.2.1
+
+# --- Auth ---
+pyjwt==2.10.1
+
+# --- Object storage ---
+boto3==1.35.90
+
+# --- Images ---
+pillow==11.1.0
+
+# --- Config / utils ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+httpx==0.28.1
+
+# --- Local shared package ---
+# In Docker this is installed separately by the Dockerfile (build context = repo root).
+# For local dev outside Docker, run: pip install -e ../shared-schemas
+
+pytest-asyncio
+pytest
+
+langfuse==4.14.5
+langchain==0.3.25

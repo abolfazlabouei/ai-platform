@@ -1,0 +1,39 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+starlette==0.41.3
+
+# --- Celery / task queue ---
+celery==5.4.0
+redis==5.2.1
+
+# --- DB ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# --- Auth ---
+pyjwt==2.10.1
+
+# --- Object storage ---
+boto3==1.35.90
+
+# --- Document extraction ---
+python-docx==1.1.2
+PyMuPDF==1.25.1
+openpyxl==3.1.5
+markdown-it-py==3.0.0
+
+# --- Config / utils ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# --- Tests ---
+pytest==8.3.4
+pytest-asyncio==0.25.0
+
+# --- Local shared package ---
+# In Docker this is installed separately by the Dockerfile (build context = repo root).
+# For local dev outside Docker, run: pip install -e ../shared-schemas

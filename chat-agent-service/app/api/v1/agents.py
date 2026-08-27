@@ -1,5 +1,5 @@
 """
-Agent CRUD + per-agent chat endpoints. /agents/{id}/chat/stream and /complete are the
+a Agent CRUD + per-agent chat endpoints. /agents/{id}/chat/stream and /complete are the
 exact same underlying primitive an ad-hoc chat uses — the only difference is that the
 agent's own system_prompt/model/mcp/kb config is used instead of per-request choices.
 

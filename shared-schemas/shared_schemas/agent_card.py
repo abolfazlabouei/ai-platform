@@ -1,5 +1,5 @@
 """
-AgentCard: discoverable metadata for any agent, used by the (future) multi-agent
+a AgentCard: discoverable metadata for any agent, used by the (future) multi-agent
 orchestrator to build an in-memory registry via GET /agents?is_composable=true.
 """
 from __future__ import annotations

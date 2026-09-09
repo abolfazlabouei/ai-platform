@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = None
     LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    
+    CLINIC_API_BASE_URL: str = "https://api.doctor-laser.ir"
 
 
 @lru_cache

@@ -23,6 +23,7 @@ class RuntimeConfig(TypedDict, total=False):
     knowledge_base_ids: list[str]
     bound_tools: list[Any]
     tool_hitl_map: dict[str, bool]
+    clinic_context: str
 
 
 class GraphState(TypedDict, total=False):

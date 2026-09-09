@@ -33,7 +33,7 @@ from app.models.message import MessageRole
 from app.repositories.mcp_repo import McpRepo
 from app.services.conversation_service import ConversationService
 from app.services.title_service import generate_title
-
+from app.services.clinic_client import fetch_clinic_profile, format_clinic_context
 
 class ChatService:
     def __init__(self, db: AsyncSession):
@@ -51,6 +51,7 @@ class ChatService:
         model_provider: str | None,
         model_name: str | None,
         system_prompt_override: str | None,
+        clinic_id: str | None = None,
     ) -> RuntimeConfig:
         approved_tools = await get_approved_tools(self.db, mcp_server_ids)
         hitl_map = build_hitl_map(approved_tools)
@@ -75,6 +76,12 @@ class ChatService:
             model = model_name or settings.DEFAULT_MODEL_NAME
             temperature = 0.7
             system_prompt = system_prompt_override or "You are a helpful assistant."
+            
+        clinic_context = None
+        if clinic_id:
+            profile = await fetch_clinic_profile(clinic_id)
+            if profile:
+                clinic_context = format_clinic_context(profile)
 
         return RuntimeConfig(
             conversation_id=str(conversation_id),
@@ -87,6 +94,7 @@ class ChatService:
             knowledge_base_ids=knowledge_base_ids,
             bound_tools=bound_tools,
             tool_hitl_map=hitl_map,
+            clinic_context=clinic_context,
         )
 
     async def run_turn(
@@ -100,6 +108,7 @@ class ChatService:
         model_provider: str | None = None,
         model_name: str | None = None,
         system_prompt_override: str | None = None,
+        clinic_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Async generator yielding raw LangGraph stream events. The API layer's SSE
@@ -128,6 +137,7 @@ class ChatService:
             model_provider,
             model_name,
             system_prompt_override,
+            clinic_id,
         )
 
         graph = await get_compiled_graph()

@@ -1,0 +1,23 @@
+name: Deploy Doctor Laser (client)
+
+on:
+  push:
+    branches: [client/doctor-laser]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git checkout client/doctor-laser
+            git pull origin client/doctor-laser
+            docker compose build
+            docker compose up -d
+            docker image prune -f

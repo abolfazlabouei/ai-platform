@@ -17,6 +17,8 @@ class ChatRequest(BaseModel):
     knowledge_base_ids: list[str] = Field(default_factory=list)
     model_provider: str | None = None
     model_name: str | None = None
+    clinic_id: str | None = None
+    
 
 
 class ToolApprovalRequest(BaseModel):

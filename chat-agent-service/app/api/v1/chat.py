@@ -52,6 +52,7 @@ async def chat_stream(
         knowledge_base_ids=req.knowledge_base_ids,
         model_provider=req.model_provider,
         model_name=req.model_name,
+        clinic_id=req.clinic_id,
     )
     return StreamingResponse(to_sse(event_stream, conversation_id=str(conversation_id)), media_type="text/event-stream")
 
@@ -72,6 +73,7 @@ async def chat_complete(
         knowledge_base_ids=req.knowledge_base_ids,
         model_provider=req.model_provider,
         model_name=req.model_name,
+        clinic_id=req.clinic_id,
     )
     async for _ in event_stream:
         pass  # drain — chat_service persists the assistant message as a side effect

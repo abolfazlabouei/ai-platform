@@ -32,14 +32,20 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
         model = model.bind_tools(bound_tools)
 
     system_prompt = runtime.get("system_prompt") or "You are a helpful assistant."
+
+    clinic_context = runtime.get("clinic_context")
+    if clinic_context:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"اطلاعات کلینیکی که در حال حاضر با آن در ارتباط هستید:\n{clinic_context}"
+        )
+
     context = state.get("retrieved_context")
-    print(f"[RAG DEBUG] llm_node sees retrieved_context: {'YES, ' + str(len(context)) + ' chars' if context else 'NONE'}")
     if context:
         system_prompt = (
             f"{system_prompt}\n\n"
             f"Use the following retrieved knowledge if relevant to the user's question:\n{context}"
         )
-
     print(f"[RAG DEBUG] Final system_prompt sent to model (first 800 chars):\n{system_prompt[:800]}")
     print(f"[RAG DEBUG] Model provider={runtime.get('model_provider')} model={runtime.get('model_name')}")
 

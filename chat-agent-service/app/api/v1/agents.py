@@ -151,6 +151,7 @@ async def agent_chat_stream(
         agent=agent,
         mcp_server_ids=agent.mcp_server_ids,
         knowledge_base_ids=agent.knowledge_base_ids,
+        clinic_id=req.clinic_id,
     )
     return StreamingResponse(to_sse(event_stream, conversation_id=str(conv.id)), media_type="text/event-stream")
 
@@ -181,6 +182,7 @@ async def agent_chat_complete(
         agent=agent,
         mcp_server_ids=agent.mcp_server_ids,
         knowledge_base_ids=agent.knowledge_base_ids,
+        clinic_id=req.clinic_id,
     )
     async for _ in event_stream:
         pass

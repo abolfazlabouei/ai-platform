@@ -41,17 +41,25 @@ def chat_stream(token: str, **kwargs) -> Iterator[tuple[str, dict]]:
     yield from stream_sse(f"{CHAT_BASE_URL}/chat/stream", token, _chat_body(**kwargs))
 
 
-def agent_chat_complete(token: str, agent_id: str, content_text: str, conversation_id: Optional[str]) -> dict:
+def agent_chat_complete(
+    token: str, agent_id: str, content_text: str, conversation_id: Optional[str], clinic_id: Optional[str] = None
+) -> dict:
     body: dict[str, Any] = {"content_blocks": [{"type": "text", "text": content_text}]}
     if conversation_id:
         body["conversation_id"] = conversation_id
+    if clinic_id:
+        body["clinic_id"] = clinic_id
     return request_json("POST", f"{CHAT_BASE_URL}/agents/{agent_id}/chat/complete", token, json_body=body)
 
 
-def agent_chat_stream(token: str, agent_id: str, content_text: str, conversation_id: Optional[str]) -> Iterator[tuple[str, dict]]:
+def agent_chat_stream(
+    token: str, agent_id: str, content_text: str, conversation_id: Optional[str], clinic_id: Optional[str] = None
+) -> Iterator[tuple[str, dict]]:
     body: dict[str, Any] = {"content_blocks": [{"type": "text", "text": content_text}]}
     if conversation_id:
         body["conversation_id"] = conversation_id
+    if clinic_id:
+        body["clinic_id"] = clinic_id
     yield from stream_sse(f"{CHAT_BASE_URL}/agents/{agent_id}/chat/stream", token, body)
 
 

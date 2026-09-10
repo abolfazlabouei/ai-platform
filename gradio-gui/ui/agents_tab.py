@@ -109,11 +109,12 @@ def build_agents_tab(token_state: gr.State):
             with gr.Column(scale=1):
                 agent_chat_id = gr.Textbox(label="Agent ID")
                 agent_conversation_id = gr.Textbox(label="Conversation ID (blank = new)")
+                agent_clinic_id = gr.Textbox(label="Clinic ID (doctor-laser context)")
 
-        def on_agent_complete(token, history, text, aid, conv_id):
+        def on_agent_complete(token, history, text, aid, conv_id, clinic_id):
             history = history or []
             try:
-                result = agent_chat_complete(token, aid, text, conv_id or None)
+                result = agent_chat_complete(token, aid, text, conv_id or None, clinic_id or None)
                 reply = "\n".join(b.get("text", "") for b in result.get("content_blocks", []) if b.get("type") == "text")
                 history.append((text, reply or "(no text content)"))
                 return history, "", result.get("conversation_id", conv_id)
@@ -123,15 +124,15 @@ def build_agents_tab(token_state: gr.State):
 
         agent_complete_btn.click(
             on_agent_complete,
-            inputs=[token_state, agent_chatbot, agent_message, agent_chat_id, agent_conversation_id],
+            inputs=[token_state, agent_chatbot, agent_message, agent_chat_id, agent_conversation_id, agent_clinic_id],
             outputs=[agent_chatbot, agent_message, agent_conversation_id],
         )
 
-        def on_agent_stream(token, history, text, aid, conv_id):
+        def on_agent_stream(token, history, text, aid, conv_id, clinic_id):
             history = history or []
             history.append([text, ""])
             try:
-                for event_type, data in agent_chat_stream(token, aid, text, conv_id or None):
+                for event_type, data in agent_chat_stream(token, aid, text, conv_id or None, clinic_id or None):
                     if event_type == "token":
                         history[-1][1] += data.get("text", "")
                         yield history, "", conv_id
@@ -144,6 +145,6 @@ def build_agents_tab(token_state: gr.State):
 
         agent_stream_btn.click(
             on_agent_stream,
-            inputs=[token_state, agent_chatbot, agent_message, agent_chat_id, agent_conversation_id],
+            inputs=[token_state, agent_chatbot, agent_message, agent_chat_id, agent_conversation_id, agent_clinic_id],
             outputs=[agent_chatbot, agent_message, agent_conversation_id],
         )

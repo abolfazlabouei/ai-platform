@@ -2,3 +2,8 @@ gradio==5.9.1
 requests==2.32.3
 pyjwt==2.9.0
 python-dotenv==1.0.1
+# Pinned older than gradio's default transitive pull: newer numpy wheels are
+# built with an x86-64-v2 SIMD baseline this host's CPU doesn't support (same
+# root cause as the MinIO/ClickHouse CPU issues noted in docker-compose.yml;
+# knowledge-service/requirements.txt pins the same version for the same reason).
+numpy==1.26.4

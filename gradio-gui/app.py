@@ -25,4 +25,9 @@ with gr.Blocks(title="ai-platform API test GUI") as demo:
     build_knowledge_tab(token_state)
 
 if __name__ == "__main__":
-    demo.queue().launch(server_name="0.0.0.0", server_port=7860)
+    # show_api=False: gradio 5.9.1 has a bug in its API-schema introspection
+    # (gradio_client/utils.py get_type() crashes on a bare-bool
+    # additionalProperties schema, likely from the gr.Timer component) that
+    # otherwise makes the /docs API-info endpoint 500 and, in turn, makes
+    # launch()'s own startup self-check think localhost is unreachable.
+    demo.queue().launch(server_name="0.0.0.0", server_port=7860, show_api=False)

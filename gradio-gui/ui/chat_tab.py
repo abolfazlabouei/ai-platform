@@ -16,7 +16,11 @@ def build_chat_tab(token_state: gr.State):
         )
         with gr.Row():
             with gr.Column(scale=2):
-                chatbot = gr.Chatbot(type="messages", height=420)
+                # type="tuples" (not the newer "messages" dict format): gradio
+                # 5.9.1's api-schema introspection crashes on the "messages"
+                # format's metadata field (TypeError: argument of type 'bool'
+                # is not iterable, from an additionalProperties:true schema).
+                chatbot = gr.Chatbot(type="tuples", height=420)
                 message = gr.Textbox(label="Message", lines=2)
                 with gr.Row():
                     stream_btn = gr.Button("Send (stream)", variant="primary")
@@ -42,17 +46,16 @@ def build_chat_tab(token_state: gr.State):
 
         def on_complete(token, history, text, conv_id, clinic, mcp_ids, kb_ids, provider, model):
             history = history or []
-            history.append({"role": "user", "content": text})
             try:
                 result = chat_complete(
                     token, content_text=text, **_common_kwargs(conv_id, clinic, mcp_ids, kb_ids, provider, model)
                 )
                 reply = "\n".join(b.get("text", "") for b in result.get("content_blocks", []) if b.get("type") == "text")
-                history.append({"role": "assistant", "content": reply or "(no text content)"})
+                history.append((text, reply or "(no text content)"))
                 new_conv_id = result.get("conversation_id", conv_id)
                 return history, "", new_conv_id, f"conversation_id: {new_conv_id}"
             except ApiError as e:
-                history.append({"role": "assistant", "content": f"ERROR: {e}"})
+                history.append((text, f"ERROR: {e}"))
                 return history, "", conv_id, str(e)
 
         complete_btn.click(
@@ -63,15 +66,14 @@ def build_chat_tab(token_state: gr.State):
 
         def on_stream(token, history, text, conv_id, clinic, mcp_ids, kb_ids, provider, model):
             history = history or []
-            history.append({"role": "user", "content": text})
-            history.append({"role": "assistant", "content": ""})
+            history.append([text, ""])
             events = []
             try:
                 for event_type, data in chat_stream(
                     token, content_text=text, **_common_kwargs(conv_id, clinic, mcp_ids, kb_ids, provider, model)
                 ):
                     if event_type == "token":
-                        history[-1]["content"] += data.get("text", "")
+                        history[-1][1] += data.get("text", "")
                         yield history, "", conv_id, "\n".join(events)
                     elif event_type == "tool_call":
                         events.append(f"[tool_call] {data.get('tool_name')} input={data.get('input')}")
@@ -89,7 +91,7 @@ def build_chat_tab(token_state: gr.State):
                         events.append("[done]")
                         yield history, "", conv_id, "\n".join(events)
             except ApiError as e:
-                history[-1]["content"] += f"\nERROR: {e}"
+                history[-1][1] += f"\nERROR: {e}"
                 yield history, "", conv_id, "\n".join(events + [str(e)])
 
         stream_btn.click(

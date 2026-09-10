@@ -99,7 +99,9 @@ def build_agents_tab(token_state: gr.State):
         gr.Markdown("---\n### Chat with an agent")
         with gr.Row():
             with gr.Column(scale=2):
-                agent_chatbot = gr.Chatbot(type="messages", height=360)
+                # type="tuples": see chat_tab.py for why "messages" crashes
+                # gradio 5.9.1's api-schema introspection.
+                agent_chatbot = gr.Chatbot(type="tuples", height=360)
                 agent_message = gr.Textbox(label="Message", lines=2)
                 with gr.Row():
                     agent_stream_btn = gr.Button("Send (stream)", variant="primary")
@@ -110,14 +112,13 @@ def build_agents_tab(token_state: gr.State):
 
         def on_agent_complete(token, history, text, aid, conv_id):
             history = history or []
-            history.append({"role": "user", "content": text})
             try:
                 result = agent_chat_complete(token, aid, text, conv_id or None)
                 reply = "\n".join(b.get("text", "") for b in result.get("content_blocks", []) if b.get("type") == "text")
-                history.append({"role": "assistant", "content": reply or "(no text content)"})
+                history.append((text, reply or "(no text content)"))
                 return history, "", result.get("conversation_id", conv_id)
             except ApiError as e:
-                history.append({"role": "assistant", "content": f"ERROR: {e}"})
+                history.append((text, f"ERROR: {e}"))
                 return history, "", conv_id
 
         agent_complete_btn.click(
@@ -128,18 +129,17 @@ def build_agents_tab(token_state: gr.State):
 
         def on_agent_stream(token, history, text, aid, conv_id):
             history = history or []
-            history.append({"role": "user", "content": text})
-            history.append({"role": "assistant", "content": ""})
+            history.append([text, ""])
             try:
                 for event_type, data in agent_chat_stream(token, aid, text, conv_id or None):
                     if event_type == "token":
-                        history[-1]["content"] += data.get("text", "")
+                        history[-1][1] += data.get("text", "")
                         yield history, "", conv_id
                     elif event_type == "error":
-                        history[-1]["content"] += f"\n[error] {data.get('message')}"
+                        history[-1][1] += f"\n[error] {data.get('message')}"
                         yield history, "", conv_id
             except ApiError as e:
-                history[-1]["content"] += f"\nERROR: {e}"
+                history[-1][1] += f"\nERROR: {e}"
                 yield history, "", conv_id
 
         agent_stream_btn.click(

@@ -1,4 +1,12 @@
-gradio==5.9.1
+# >=5.31: gradio 5.9.1's gradio_client has a schema-introspection bug
+# (TypeError: argument of type 'bool' is not iterable, from an
+# additionalProperties:true JSON schema emitted by components like Chatbot/File)
+# that crashes the app at startup regardless of which components are used.
+# Left unbounded above the floor (rather than pinned exact) so pip picks up
+# whatever current 5.x release has this fixed; huggingface_hub is left
+# unpinned too since only the old gradio 5.9.1 oauth module needed the
+# removed HfFolder symbol.
+gradio>=5.31.0,<6.0.0
 requests==2.32.3
 pyjwt==2.9.0
 python-dotenv==1.0.1

@@ -163,6 +163,17 @@ services:
         condition: service_healthy
     env_file: ./knowledge-service/.env
 
+  gradio-gui:
+    build:
+      context: .
+      dockerfile: gradio-gui/Dockerfile
+    depends_on: [chat-agent-service, file-processing-service, knowledge-service]
+    ports: ["7860:7860"]
+    environment:
+      CHAT_BASE_URL: http://chat-agent-service:8000/api/v1
+      FILES_BASE_URL: http://file-processing-service:8000/api/v1
+      KB_BASE_URL: http://knowledge-service:8000/api/v1
+
   # =========================================================================
   # Self-hosted Langfuse (v3) — LLM tracing/observability, consumed by
   # chat-agent-service's app/observability/langfuse_client.py.

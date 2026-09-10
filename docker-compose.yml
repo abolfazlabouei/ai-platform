@@ -173,6 +173,12 @@ services:
       CHAT_BASE_URL: http://chat-agent-service:8000/api/v1
       FILES_BASE_URL: http://file-processing-service:8000/api/v1
       KB_BASE_URL: http://knowledge-service:8000/api/v1
+      # gradio's launch() self-checks by requesting http://127.0.0.1:<port> to
+      # confirm the server started; if a proxy env var is inherited from the
+      # host it can intercept that loopback request and launch() then refuses
+      # to start ("check your proxy settings to allow access to localhost").
+      NO_PROXY: "127.0.0.1,localhost"
+      no_proxy: "127.0.0.1,localhost"
 
   # =========================================================================
   # Self-hosted Langfuse (v3) — LLM tracing/observability, consumed by

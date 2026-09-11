@@ -40,10 +40,15 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = "minioadmin"
     S3_PUBLIC_BASE_URL: str = "http://localhost:9000/generated-media"
 
-    # --- Auth ---
+    # --- Auth & OAuth ---
     JWT_SECRET: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
     JWT_AUDIENCE: str | None = None
+    TOKEN_ENCRYPTION_KEY: str | None = None  # base64 Fernet key, see app/core/encryption.py
+    GOOGLE_OAUTH_CLIENT_ID: str | None = None
+    GOOGLE_OAUTH_CLIENT_SECRET: str | None = None
+    GOOGLE_OAUTH_REDIRECT_BASE_URL: str = "http://localhost:8101"  # externally-reachable base URL for this service; used to build the redirect_uri
+    OAUTH_SUCCESS_REDIRECT_URL: str | None = None
 
     # --- LLM providers (API keys resolved per-agent/model_config, these are defaults) ---
     ANTHROPIC_API_KEY: str | None = None

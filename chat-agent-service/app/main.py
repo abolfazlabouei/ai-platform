@@ -18,6 +18,7 @@ from app.api.v1 import (
     conversations,
     health,
     knowledge_proxy,
+    mcp_oauth,
     mcp_servers,
     media,
     tool_approval,
@@ -73,6 +74,7 @@ app.include_router(chat.router, prefix=API_PREFIX)
 app.include_router(agents.router, prefix=API_PREFIX)
 app.include_router(conversations.router, prefix=API_PREFIX)
 app.include_router(mcp_servers.router, prefix=API_PREFIX)
+app.include_router(mcp_oauth.router, prefix=API_PREFIX)
 app.include_router(tool_approval.router, prefix=API_PREFIX)
 app.include_router(knowledge_proxy.router, prefix=API_PREFIX)
 app.include_router(media.router, prefix=API_PREFIX)

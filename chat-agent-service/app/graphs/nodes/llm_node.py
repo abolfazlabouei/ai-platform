@@ -40,6 +40,13 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
             f"اطلاعات کلینیکی که در حال حاضر با آن در ارتباط هستید:\n{clinic_context}"
         )
 
+    oauth_missing_context = runtime.get("oauth_missing_context")
+    if oauth_missing_context:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"{oauth_missing_context}"
+        )
+
     context = state.get("retrieved_context")
     if context:
         system_prompt = (

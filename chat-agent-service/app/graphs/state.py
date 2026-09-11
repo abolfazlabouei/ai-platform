@@ -24,6 +24,7 @@ class RuntimeConfig(TypedDict, total=False):
     bound_tools: list[Any]
     tool_hitl_map: dict[str, bool]
     clinic_context: str
+    oauth_missing_context: str | None
 
 
 class GraphState(TypedDict, total=False):

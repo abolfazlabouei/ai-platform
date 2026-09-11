@@ -37,3 +37,15 @@ class McpToolOut(BaseModel):
 class ToolApprovalUpdate(BaseModel):
     approval_status: str  # approved | rejected
     requires_hitl: bool = False
+
+
+class McpConnectionStatusOut(BaseModel):
+    connected: bool
+    status: str
+    expires_at: datetime | None = None
+    scopes: str | None = None
+    last_error: str | None = None
+
+
+class McpAuthorizeOut(BaseModel):
+    authorization_url: str

@@ -23,6 +23,7 @@ redis==5.2.1
 
 # --- Auth ---
 pyjwt==2.10.1
+cryptography==43.0.3
 
 # --- Object storage ---
 boto3==1.35.90

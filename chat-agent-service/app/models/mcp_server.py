@@ -45,7 +45,12 @@ class McpServer(Base):
     transport: Mapped[McpTransport] = mapped_column(Enum(McpTransport, name="mcp_transport"), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
 
-    # e.g. {"type": "bearer", "token": "..."} — should be encrypted at rest in production
+    # auth_config shapes:
+    #   {"type": "bearer", "token": "..."}                          — existing, unchanged
+    #   {"type": "oauth2_per_user", "scopes": ["https://www.googleapis.com/auth/calendar"]}
+    #     — new. No client secret/token lives here; those come from global settings
+    #     (GOOGLE_OAUTH_CLIENT_ID/SECRET) since one Google Cloud OAuth app is shared
+    #     across all McpServers of this type. Per-user tokens live in McpUserConnection.
     auth_config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     status: Mapped[McpServerStatus] = mapped_column(

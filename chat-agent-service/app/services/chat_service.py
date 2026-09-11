@@ -32,6 +32,7 @@ from app.models.mcp_server import McpServer
 from app.models.message import MessageRole
 from app.repositories.mcp_repo import McpRepo
 from app.services.conversation_service import ConversationService
+from app.services.oauth_service import OAuthService
 from app.services.title_service import generate_title
 from app.services.clinic_client import fetch_clinic_profile, format_clinic_context
 
@@ -54,7 +55,6 @@ class ChatService:
         clinic_id: str | None = None,
     ) -> RuntimeConfig:
         approved_tools = await get_approved_tools(self.db, mcp_server_ids)
-        hitl_map = build_hitl_map(approved_tools)
 
         servers: list[McpServer] = []
         for server_id in {t.mcp_server_id for t in approved_tools}:
@@ -62,9 +62,46 @@ class ChatService:
             if server:
                 servers.append(server)
 
+        servers_by_id = {s.id: s for s in servers}
+        oauth_service = OAuthService(self.db)
+        oauth_missing_servers: list[McpServer] = []
+        token_cache: dict[uuid.UUID, str | None] = {}
+
+        filtered_tools = []
+        for tool in approved_tools:
+            server = servers_by_id.get(tool.mcp_server_id)
+            if not server:
+                continue
+            if server.auth_config.get("type") == "oauth2_per_user":
+                if server.id not in token_cache:
+                    token = await oauth_service.get_valid_access_token(server.id, user_id)
+                    token_cache[server.id] = token
+                    if token is None:
+                        oauth_missing_servers.append(server)
+                if token_cache[server.id] is None:
+                    continue
+            filtered_tools.append(tool)
+
+        hitl_map = build_hitl_map(filtered_tools)
+        active_server_ids = {t.mcp_server_id for t in filtered_tools}
+        active_servers = [s for s in servers if s.id in active_server_ids]
+
         pool = McpClientPool()
-        approved_names = {t.tool_name for t in approved_tools}
-        bound_tools = await pool.as_langchain_tools(servers, approved_names) if servers else []
+        approved_names = {t.tool_name for t in filtered_tools}
+        bound_tools = (
+            await pool.as_langchain_tools(active_servers, approved_names, user_id=user_id)
+            if active_servers
+            else []
+        )
+
+        oauth_missing_context = None
+        if oauth_missing_servers:
+            server_names = ", ".join(s.name for s in oauth_missing_servers)
+            oauth_missing_context = (
+                f"Note: the user has not connected their account for: {server_names}. "
+                "If they ask about or attempt to use tools requiring these services, "
+                "tell them to connect their account first before you can help."
+            )
 
         if agent:
             provider = model_provider or agent.model_config_json.get("provider", settings.DEFAULT_MODEL_PROVIDER)
@@ -95,6 +132,7 @@ class ChatService:
             bound_tools=bound_tools,
             tool_hitl_map=hitl_map,
             clinic_context=clinic_context,
+            oauth_missing_context=oauth_missing_context,
         )
 
     async def run_turn(

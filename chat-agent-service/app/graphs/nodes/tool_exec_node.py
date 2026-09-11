@@ -22,6 +22,7 @@ async def tool_exec_node(state: GraphState) -> dict[str, Any]:
 
     pool = McpClientPool()
     tool_messages: list[ToolMessage] = []
+    user_id = state.get("runtime", {}).get("user_id")
 
     for tc in tool_calls:
         if tc["id"] in rejected_ids:
@@ -35,7 +36,7 @@ async def tool_exec_node(state: GraphState) -> dict[str, Any]:
             continue
 
         try:
-            result = await pool.call_tool(tool_name=tc["name"], arguments=tc["args"])
+            result = await pool.call_tool(tool_name=tc["name"], arguments=tc["args"], user_id=user_id)
             tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=tc["name"]))
         except Exception as exc:  # noqa: BLE001 — surfaced to the model, not swallowed silently
             tool_messages.append(

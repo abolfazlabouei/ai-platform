@@ -21,6 +21,7 @@ from app.api.v1 import (
     mcp_servers,
     media,
     tool_approval,
+    auth
 )
 from app.checkpointer.postgres_saver import close_checkpointer, get_checkpointer
 from app.core.config import settings
@@ -77,3 +78,4 @@ app.include_router(tool_approval.router, prefix=API_PREFIX)
 app.include_router(knowledge_proxy.router, prefix=API_PREFIX)
 app.include_router(media.router, prefix=API_PREFIX)
 app.include_router(channel_identities.router, prefix=API_PREFIX)
+app.include_router(auth.router, prefix=API_PREFIX)

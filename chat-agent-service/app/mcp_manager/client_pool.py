@@ -37,7 +37,7 @@ class McpClientPool:
     async def discover_tools(self, server: McpServer) -> list[dict]:
         """Connects, lists tools, and returns raw MCP tool specs (name/description/input_schema)."""
         client = MultiServerMCPClient({server.name: self._connection_config(server)})
-        tools = await client.get_tools()
+        tools = client.get_tools()
         self._clients[str(server.id)] = client
         specs = []
         for t in tools:
@@ -59,7 +59,7 @@ class McpClientPool:
             if key not in self._clients:
                 await self.discover_tools(server)
             client = self._clients[key]
-            tools = await client.get_tools()
+            tools = client.get_tools()
             all_tools.extend(t for t in tools if t.name in approved_tool_names)
         return all_tools
 

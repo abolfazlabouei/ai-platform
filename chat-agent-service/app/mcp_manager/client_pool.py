@@ -28,10 +28,16 @@ class McpClientPool:
             cls._instance._tool_cache = {}  # tool_name -> bound structured tool
         return cls._instance
 
-    def _connection_config(self, server: McpServer) -> dict[str, Any]:
+    def _connection_config(self, server: McpServer, token: str | None = None) -> dict[str, Any]:
         cfg: dict[str, Any] = {"url": server.url, "transport": server.transport.value}
+        headers = {}
         if server.auth_config.get("type") == "bearer":
-            cfg["headers"] = {"Authorization": f"Bearer {server.auth_config['token']}"}
+            headers["Authorization"] = f"Bearer {server.auth_config['token']}"
+        elif server.auth_config.get("type") == "oauth2_per_user" and token:
+            headers["Authorization"] = f"Bearer {token}"
+        headers.update(server.auth_config.get("custom_headers", {}))
+        if headers:
+            cfg["headers"] = headers
         return cfg
 
     async def discover_tools(self, server: McpServer) -> list[dict]:

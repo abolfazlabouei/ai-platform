@@ -4,3 +4,4 @@ from app.models.channel_identity import ChannelIdentity  # noqa: F401
 from app.models.conversation import Conversation  # noqa: F401
 from app.models.mcp_server import McpServer, McpTool  # noqa: F401
 from app.models.message import Message  # noqa: F401
+from app.models.user import User  # noqa: F401

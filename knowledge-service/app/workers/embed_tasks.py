@@ -21,7 +21,7 @@ from app.models.kb_source import IngestStatus, KBSource
 from app.services.embedding_service import embed_texts_sync
 from app.services.file_client import get_chunks_sync
 from app.services.progress_publisher import publish_progress_sync
-from app.services.vector_store import upsert_vectors_sync
+from app.services.vector_store import delete_by_file_sync, point_id_for, upsert_vectors_sync
 from app.workers.celery_app import celery_app
 from app.workers.db import SyncSessionLocal
 
@@ -50,17 +50,22 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
                 publish_progress_sync(job_id, "done", 100, "No chunks found for this file")
                 return
 
+            # empty chunks can't be embedded (and carry no information anyway)
+            chunks = [c for c in chunks if (c.get("content") or "").strip()]
+
             # --- stage: embed ---
             texts = [c["content"] for c in chunks]
             publish_progress_sync(job_id, "embedding", 30, f"Embedding {len(texts)} chunks")
             vectors = embed_texts_sync(texts)
 
             # --- stage: upsert into vector store ---
+            kb_id = str(kb_source.knowledge_base_id)
             points = []
             for chunk, vector in zip(chunks, vectors, strict=True):
                 points.append(
                     {
-                        "id": str(uuid.uuid4()),
+                        # deterministic id: re-ingesting the same file overwrites instead of duplicating
+                        "id": point_id_for(kb_id, chunk["id"]),
                         "vector": vector,
                         "payload": {
                             "chunk_id": chunk["id"],
@@ -68,10 +73,15 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
                             "type": chunk["type"],
                             "content": chunk["content"],
                             "order_index": chunk["order_index"],
+                            "storage_key": chunk.get("storage_key"),
+                            "metadata": chunk.get("extra_metadata") or {},
                         },
                     }
                 )
-            upsert_vectors_sync(str(kb_source.knowledge_base_id), points)
+            # Re-ingest (file re-processed, or ingested twice) must not leave stale or
+            # duplicate vectors behind — duplicates crowd the top-k with copies.
+            delete_by_file_sync(kb_id, str(kb_source.file_id))
+            upsert_vectors_sync(kb_id, points)
             publish_progress_sync(job_id, "embedding", 90, "Upserted vectors into Qdrant")
 
             # --- stage: done ---

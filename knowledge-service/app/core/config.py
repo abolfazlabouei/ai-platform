@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_AUDIENCE: str | None = None
 
+    # --- TEMPORARY: auth disabled for local/demo use (see app/core/security.py) ---
+    AUTH_DISABLED: bool = True
+    AUTH_DISABLED_USER_ID: str = "local-user"
+
     # --- Embedding provider ---
     EMBEDDING_PROVIDER: Literal["openai", "anthropic_voyage"] = "openai"
     EMBEDDING_BASE_URL: str | None = None 
@@ -38,6 +42,9 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int = 1536
     EMBEDDING_API_KEY: str | None = None
     EMBEDDING_BATCH_SIZE: int = 64
+    EMBEDDING_MAX_RETRIES: int = 3
+    # Persian is ~1 token/char for OpenAI tokenizers; 6000 chars stays under 8191 tokens.
+    EMBEDDING_MAX_INPUT_CHARS: int = 6000
 
     DEFAULT_SEARCH_TOP_K: int = 6
 

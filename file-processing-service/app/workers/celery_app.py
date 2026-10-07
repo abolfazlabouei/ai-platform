@@ -25,6 +25,6 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,  # re-deliver to another worker if one crashes mid-file
     worker_prefetch_multiplier=1,  # don't let one worker hoard multiple large-file jobs
-    task_time_limit=60 * 30,  # hard kill after 30 minutes (very large files)
-    task_soft_time_limit=60 * 25,
+    task_time_limit=settings.FILE_TASK_TIME_LIMIT_SECONDS,  # hard kill (very large files + OCR)
+    task_soft_time_limit=settings.FILE_TASK_TIME_LIMIT_SECONDS - 300,
 )

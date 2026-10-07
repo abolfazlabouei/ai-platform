@@ -49,20 +49,28 @@ def ensure_collection_sync(kb_id: str) -> None:
         )
 
 
-def upsert_vectors_sync(kb_id: str, points: list[dict]) -> None:
-    """points: [{"id": str, "vector": list[float], "payload": {...}}]"""
+def point_id_for(kb_id: str, chunk_id: str) -> str:
+    """Stable Qdrant point id per (knowledge base, chunk)."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{kb_id}:{chunk_id}"))
+
+
+def upsert_vectors_sync(kb_id: str, points: list[dict], batch_size: int = 256) -> None:
+    """points: [{"id": str, "vector": list[float], "payload": {...}}] — upserted in
+    batches so large files stay under Qdrant's request size limit."""
     client = _get_client()
     ensure_collection_sync(kb_id)
-    client.upsert(
-        collection_name=_collection_name(kb_id),
-        points=[
-            qmodels.PointStruct(id=p["id"], vector=p["vector"], payload=p["payload"]) for p in points
-        ],
-    )
+    for start in range(0, len(points), batch_size):
+        batch = points[start : start + batch_size]
+        client.upsert(
+            collection_name=_collection_name(kb_id),
+            points=[qmodels.PointStruct(id=p["id"], vector=p["vector"], payload=p["payload"]) for p in batch],
+            wait=True,
+        )
 
 
 def delete_by_file_sync(kb_id: str, file_id: str) -> None:
     client = _get_client()
+    ensure_collection_sync(kb_id)  # first ingest: nothing to delete, but don't 404
     client.delete(
         collection_name=_collection_name(kb_id),
         points_selector=qmodels.FilterSelector(
@@ -96,6 +104,7 @@ def search_sync(kb_ids: list[str], query_vector: list[float], top_k: int) -> lis
                     "knowledge_base_id": kb_id,
                     "content": hit.payload.get("content"),
                     "type": hit.payload.get("type"),
+                    "metadata": hit.payload.get("metadata") or {},
                 }
             )
     all_hits.sort(key=lambda h: h["score"], reverse=True)

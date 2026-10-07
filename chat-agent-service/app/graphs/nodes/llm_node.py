@@ -14,8 +14,26 @@ from typing import Any
 
 from langchain_core.messages import SystemMessage
 
+from app.core.config import settings
 from app.graphs.llm_providers import build_chat_model
 from app.graphs.state import GraphState
+
+_RAG_INSTRUCTIONS = """
+## پاسخ‌گویی بر اساس اسناد
+برای این گفتگو از پایگاه دانش جست‌وجو شده و نتایج در بخش «اسناد بازیابی‌شده» آمده است.
+- پاسخ را فقط بر اساس همین اسناد بده. چیزی را که در اسناد نیست از خودت اضافه نکن و حدس نزن.
+- اگر پاسخ در اسناد نیست، صریح بگو که در اسناد موجود اطلاعاتی درباره‌ی آن پیدا نشد.
+- جدول‌ها را دقیق بخوان: هر مقدار را با سرستون و ردیف خودش تطبیق بده و اعداد و نام‌ها را عیناً نقل کن.
+- منبعی که با «[تصویر]» شروع می‌شود، توضیح متنی یکی از تصاویر سند است.
+- خط اول هر منبع (مثل «[منبع: نام فایل | صفحه ۳]») نشان می‌دهد محتوا از کجاست؛ در پایان پاسخ، منبع را به همین شکل ذکر کن.
+- به زبان کاربر پاسخ بده.
+"""
+
+_RAG_NO_RESULTS = """
+## پاسخ‌گویی بر اساس اسناد
+برای این پرسش در پایگاه دانش جست‌وجو شد ولی هیچ محتوای مرتبطی پیدا نشد.
+به کاربر صریح بگو که در اسناد موجود اطلاعاتی درباره‌ی این موضوع پیدا نکردی. از دانش عمومی خودت جواب نساز.
+"""
 
 
 async def llm_node(state: GraphState) -> dict[str, Any]:
@@ -32,16 +50,18 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
         model = model.bind_tools(bound_tools)
 
     system_prompt = runtime.get("system_prompt") or "You are a helpful assistant."
-    context = state.get("retrieved_context")
-    print(f"[RAG DEBUG] llm_node sees retrieved_context: {'YES, ' + str(len(context)) + ' chars' if context else 'NONE'}")
-    if context:
-        system_prompt = (
-            f"{system_prompt}\n\n"
-            f"Use the following retrieved knowledge if relevant to the user's question:\n{context}"
-        )
 
-    print(f"[RAG DEBUG] Final system_prompt sent to model (first 800 chars):\n{system_prompt[:800]}")
-    print(f"[RAG DEBUG] Model provider={runtime.get('model_provider')} model={runtime.get('model_name')}")
+    # retrieved_context: None = no knowledge base on this request; "" = searched,
+    # nothing found; str = sources (see knowledge_retrieval.py)
+    context = state.get("retrieved_context")
+    if context:
+        system_prompt = f"{system_prompt}\n{_RAG_INSTRUCTIONS}\n## اسناد بازیابی‌شده\n{context}"
+    elif context == "":
+        system_prompt = f"{system_prompt}\n{_RAG_NO_RESULTS}"
+
+    if settings.RAG_DEBUG:
+        state_label = "NONE" if context is None else ("EMPTY" if context == "" else f"{len(context)} chars")
+        print(f"[RAG DEBUG] llm_node context={state_label} model={runtime.get('model_provider')}/{runtime.get('model_name')}")
 
     messages = [SystemMessage(content=system_prompt), *state["messages"]]
     ai_message = await model.ainvoke(messages)

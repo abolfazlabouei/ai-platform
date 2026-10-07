@@ -26,6 +26,9 @@ PyMuPDF==1.25.1
 openpyxl==3.1.5
 markdown-it-py==3.0.0
 
+# --- Vision model calls (image captioning / PDF OCR) ---
+httpx==0.28.1
+
 # --- Config / utils ---
 pydantic==2.10.4
 pydantic-settings==2.7.1

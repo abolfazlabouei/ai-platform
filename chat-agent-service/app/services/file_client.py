@@ -19,14 +19,14 @@ class FileClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def upload_media(self, filename: str, content: bytes, mime: str, bearer_token: str) -> dict:
+    async def upload_media(self, filename: str, content: bytes, mime: str, bearer_token: str | None = None) -> dict:
         """file-processing-service's POST /files requires an authenticated user (it
         records ownership via user_id), so the caller's bearer token is forwarded
         as-is rather than re-authenticating some other way."""
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=30) as client:
+        headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else {}
+        # generous timeout: uploads can be up to MAX_UPLOAD_SIZE_MB (200MB)
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=600) as client:
             files = {"file": (filename, content, mime)}
-            resp = await client.post(
-                "/api/v1/files", files=files, headers={"Authorization": f"Bearer {bearer_token}"}
-            )
+            resp = await client.post("/api/v1/files", files=files, headers=headers)
             resp.raise_for_status()
             return resp.json()

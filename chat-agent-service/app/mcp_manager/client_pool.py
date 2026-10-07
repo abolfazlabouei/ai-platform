@@ -28,22 +28,16 @@ class McpClientPool:
             cls._instance._tool_cache = {}  # tool_name -> bound structured tool
         return cls._instance
 
-    def _connection_config(self, server: McpServer, token: str | None = None) -> dict[str, Any]:
+    def _connection_config(self, server: McpServer) -> dict[str, Any]:
         cfg: dict[str, Any] = {"url": server.url, "transport": server.transport.value}
-        headers = {}
         if server.auth_config.get("type") == "bearer":
-            headers["Authorization"] = f"Bearer {server.auth_config['token']}"
-        elif server.auth_config.get("type") == "oauth2_per_user" and token:
-            headers["Authorization"] = f"Bearer {token}"
-        headers.update(server.auth_config.get("custom_headers", {}))
-        if headers:
-            cfg["headers"] = headers
+            cfg["headers"] = {"Authorization": f"Bearer {server.auth_config['token']}"}
         return cfg
 
     async def discover_tools(self, server: McpServer) -> list[dict]:
         """Connects, lists tools, and returns raw MCP tool specs (name/description/input_schema)."""
         client = MultiServerMCPClient({server.name: self._connection_config(server)})
-        tools = client.get_tools()
+        tools = await client.get_tools()
         self._clients[str(server.id)] = client
         specs = []
         for t in tools:
@@ -65,7 +59,7 @@ class McpClientPool:
             if key not in self._clients:
                 await self.discover_tools(server)
             client = self._clients[key]
-            tools = client.get_tools()
+            tools = await client.get_tools()
             all_tools.extend(t for t in tools if t.name in approved_tool_names)
         return all_tools
 

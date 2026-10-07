@@ -11,14 +11,14 @@ from app.core.config import settings
 
 
 async def get_chunks(file_id: str) -> list[dict]:
-    async with httpx.AsyncClient(base_url=settings.FILE_SERVICE_URL, timeout=30) as client:
+    async with httpx.AsyncClient(base_url=settings.FILE_SERVICE_URL, timeout=120) as client:
         resp = await client.get(f"/api/v1/files/{file_id}/chunks")
         resp.raise_for_status()
         return resp.json()
 
 
 def get_chunks_sync(file_id: str) -> list[dict]:
-    with httpx.Client(base_url=settings.FILE_SERVICE_URL, timeout=30) as client:
+    with httpx.Client(base_url=settings.FILE_SERVICE_URL, timeout=120) as client:
         resp = client.get(f"/api/v1/files/{file_id}/chunks")
         resp.raise_for_status()
         return resp.json()

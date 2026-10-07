@@ -31,19 +31,33 @@ def _rows_to_markdown(rows: list[list[str]]) -> str:
         lines.append("| " + " | ".join(_cell_to_str(c) for c in padded) + " |")
     return "\n".join(lines)
 
-def chunk_table(rows: list[list[str]], max_rows: int | None = None) -> list[str]:
+def chunk_table(rows: list[list[str]], max_rows: int | None = None, max_chars: int | None = None) -> list[str]:
+    """
+    Splits a table into markdown chunks of at most `max_rows` body rows AND at most
+    ~`max_chars` characters (wide sheets with many columns would otherwise blow past
+    the embedding model's input limit). The header row is repeated in every chunk so
+    each chunk is self-describing.
+    """
     max_rows = max_rows or settings.MAX_TABLE_ROWS_PER_CHUNK
+    max_chars = max_chars or settings.MAX_TABLE_CHUNK_CHARS
     if not rows:
         return []
 
-    header = rows[0]
-    body = rows[1:]
+    header, body = rows[0], rows[1:]
+    if not body:
+        return [_rows_to_markdown([header])]
 
-    if len(body) <= max_rows:
-        return [_rows_to_markdown(rows)]
-
-    chunks = []
-    for start in range(0, len(body), max_rows):
-        batch = [header] + body[start : start + max_rows]
-        chunks.append(_rows_to_markdown(batch))
+    header_len = len(_rows_to_markdown([header]))
+    chunks: list[str] = []
+    batch: list[list[str]] = []
+    batch_len = header_len
+    for row in body:
+        row_len = len(_rows_to_markdown([header, row])) - header_len
+        if batch and (len(batch) >= max_rows or batch_len + row_len > max_chars):
+            chunks.append(_rows_to_markdown([header] + batch))
+            batch, batch_len = [], header_len
+        batch.append(row)
+        batch_len += row_len
+    if batch:
+        chunks.append(_rows_to_markdown([header] + batch))
     return chunks

@@ -18,6 +18,7 @@ class SearchResultItem(BaseModel):
     knowledge_base_id: str
     content: str | None
     type: str | None
+    metadata: dict = {}
 
 
 class SearchResponse(BaseModel):

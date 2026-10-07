@@ -16,16 +16,15 @@ class KnowledgeClient:
             resp.raise_for_status()
             return resp.json().get("results", [])
 
-    async def list_knowledge_bases(self, bearer_token: str) -> list[dict]:
+    async def list_knowledge_bases(self, bearer_token: str | None = None) -> list[dict]:
         """
         knowledge-service's GET /knowledge-bases is user-scoped via JWT (require_user),
         not a user_id query param — so this forwards the same bearer token the
         chat-agent-service request itself was authenticated with, rather than trying
         to pass user_id directly (which knowledge-service has no way to trust anyway).
         """
+        headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else {}
         async with httpx.AsyncClient(base_url=self.base_url, timeout=10) as client:
-            resp = await client.get(
-                "/api/v1/knowledge-bases", headers={"Authorization": f"Bearer {bearer_token}"}
-            )
+            resp = await client.get("/api/v1/knowledge-bases", headers=headers)
             resp.raise_for_status()
             return resp.json()

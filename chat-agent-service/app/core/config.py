@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_AUDIENCE: str | None = None
 
+    # --- TEMPORARY: auth disabled for local/demo use (see app/core/security.py) ---
+    AUTH_DISABLED: bool = True
+    AUTH_DISABLED_USER_ID: str = "local-user"
+
     # --- LLM providers (API keys resolved per-agent/model_config, these are defaults) ---
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
@@ -59,6 +63,17 @@ class Settings(BaseSettings):
     # --- Streaming / concurrency ---
     SSE_KEEPALIVE_SECONDS: int = 15
     MAX_HISTORY_MESSAGES_LOADED: int = 50
+
+    # --- RAG ---
+    RAG_TOP_K: int = 8
+    # Hard cap on retrieved text injected into the prompt. Must fit the chat model's
+    # context window together with history (Persian ~1 token/char). gemma-2-27b-it has
+    # only an 8k-token window — use ~5000 there, or a long-context model.
+    RAG_MAX_CONTEXT_CHARS: int = 12000
+    # Rewrite follow-up questions ("و قیمتش؟") into standalone search queries using
+    # the conversation history before searching. Falls back to the raw question on error.
+    RAG_QUERY_REWRITE: bool = True
+    RAG_DEBUG: bool = True
     
     # --- Observability (Langfuse) ---
     LANGFUSE_ENABLED: bool = False

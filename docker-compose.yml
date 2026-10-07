@@ -48,7 +48,7 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/aistor/mc:latest
+    image: quay.io/minio/aistor/minio:latest
     # ^ this server's CPU doesn't support the x86-64-v2 instruction set that
     # recent MinIO builds require by default (confirmed by "Fatal glibc error:
     # CPU does not support x86-64-v2" on startup) — the "-cpuv1" tag suffix is

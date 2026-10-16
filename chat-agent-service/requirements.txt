@@ -10,7 +10,7 @@ langgraph-checkpoint-postgres==2.0.13
 langchain-core>=0.3.36,<0.4
 langchain-mcp-adapters==0.0.5
 langchain-anthropic==0.3.4
-langchain-openai==0.3.1
+langchain-openai==0.3.35  # 0.3.1 passed langchain-core's standard audio blocks through unconverted, so OpenRouter dropped input_audio
 
 # --- DB ---
 sqlalchemy[asyncio]==2.0.36

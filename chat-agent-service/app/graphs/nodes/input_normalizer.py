@@ -3,11 +3,11 @@ input_normalizer node.
 
 Runs first on every turn. Its job is purely to make sure the latest human message's
 content_blocks (text/image/audio references coming from the API layer) are converted
-into a proper LangChain HumanMessage with multimodal content parts, so llm_node can
-just hand `state["messages"]` straight to the model.
+into a LangChain HumanMessage, and to reset per-turn state (generated_images).
 
-Image/audio blocks carry a `url` (already resolved by chat_service via file-service),
-which is turned into the provider-native multimodal content part.
+Image/audio blocks are stored as lightweight media_ref parts (see
+services/media_resolver.py); llm_node inlines the actual bytes right before each
+model call so base64 payloads never land in the checkpointed state.
 """
 from __future__ import annotations
 
@@ -16,18 +16,15 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 
 from app.graphs.state import GraphState
+from app.services.media_resolver import media_ref_part
 
 
 def _block_to_content_part(block: dict) -> dict:
     btype = block.get("type")
     if btype == "text":
         return {"type": "text", "text": block["text"]}
-    if btype == "image":
-        return {"type": "image_url", "image_url": {"url": block["url"]}}
-    if btype == "audio":
-        # Providers that accept audio (per this platform's model) use an "input_audio" part;
-        # url is a pre-signed/public link resolved by file-processing-service.
-        return {"type": "input_audio", "input_audio": {"url": block["url"], "mime": block.get("mime")}}
+    if btype in ("image", "audio"):
+        return media_ref_part(block)
     raise ValueError(f"Unsupported input content block type: {btype}")
 
 
@@ -38,4 +35,6 @@ async def input_normalizer(state: GraphState) -> dict[str, Any]:
 
     content_parts = [_block_to_content_part(b) for b in incoming_blocks]
     human_message = HumanMessage(content=content_parts)
-    return {"messages": [human_message]}
+    # generated_images is checkpointed; clear the previous turn's images so they
+    # aren't re-attached to this turn's assistant message
+    return {"messages": [human_message], "generated_images": []}

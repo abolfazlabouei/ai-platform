@@ -33,12 +33,14 @@ class Settings(BaseSettings):
     FILE_SERVICE_URL: str = "http://file-processing-service:8000"
     KNOWLEDGE_SERVICE_URL: str = "http://knowledge-service:8000"
 
-    # --- Object storage (for referencing generated images uploaded by output_formatter) ---
+    # --- Object storage (chat media: user image/audio uploads + generated images) ---
     S3_ENDPOINT: str = "http://minio:9000"
     S3_BUCKET_GENERATED: str = "generated-media"
     S3_ACCESS_KEY: str = "minioadmin"
     S3_SECRET_KEY: str = "minioadmin"
-    S3_PUBLIC_BASE_URL: str = "http://localhost:9000/generated-media"
+    # Base URL clients use to fetch chat media; served by GET /api/v1/media/files/{key}
+    MEDIA_PUBLIC_BASE_URL: str = "http://localhost:8101/api/v1/media/files"
+    MAX_MEDIA_UPLOAD_MB: int = 20
 
     # --- Auth ---
     JWT_SECRET: str = "change-me"
@@ -53,8 +55,14 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     OPENROUTER_API_KEY: str | None = None
-    DEFAULT_MODEL_PROVIDER: str = "anthropic"
-    DEFAULT_MODEL_NAME: str = "claude-sonnet-4-6"
+    DEFAULT_MODEL_PROVIDER: str = "openrouter"
+    # text + image + audio in, text out
+    DEFAULT_MODEL_NAME: str = "qwen/qwen3.8-omni-flash"
+
+    # --- Image generation (exposed to the chat model as the generate_image tool) ---
+    IMAGE_GEN_ENABLED: bool = True
+    IMAGE_GEN_MODEL: str = "google/gemini-nano-banana-2.1"
+    IMAGE_GEN_TIMEOUT_SECONDS: int = 120
 
     # --- MCP ---
     MCP_CONNECT_TIMEOUT_SECONDS: int = 15

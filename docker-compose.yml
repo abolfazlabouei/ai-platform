@@ -48,16 +48,17 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/aistor/minio:latest
-    # ^ this server's CPU doesn't support the x86-64-v2 instruction set that
-    # recent MinIO builds require by default (confirmed by "Fatal glibc error:
-    # CPU does not support x86-64-v2" on startup) — the "-cpuv1" tag suffix is
-    # MinIO's official build variant for older CPUs. An existing container on
-    # this same host (infra-minio-1) already uses this exact tag successfully.
-    command: server /data --console-address ":9001"
+    # RustFS: open-source (Apache-2.0) S3-compatible server. Free MinIO images are no
+    # longer published (docker.io/minio/minio is gone) and AIStor refuses writes
+    # without a license. Service is still called `minio` so S3_ENDPOINT=http://minio:9000
+    # keeps working. Multi-arch (amd64 + arm64).
+    image: rustfs/rustfs:1.0.1
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
     # Remapped off the default 9000/9001 — an existing infra-minio-1 container
     # already occupies those on this host. The API port (9010) must be
     # reachable from wherever end users' browsers load generated-image/
@@ -65,9 +66,9 @@ services:
     # and file-processing-service/.env must match.
     ports: ["9010:9000", "9011:9001"]
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data  # fresh volume: the old minio_data (AIStor) volume is left untouched
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -225,20 +226,23 @@ services:
       start_period: 1s
 
   langfuse-minio:
-    image: quay.io/minio/aistor/mc:latest  # same CPU-compatibility note as the main `minio` service above
+    image: rustfs/rustfs:1.0.1  # see the main `minio` service above
     restart: always
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    # The "langfuse" bucket is not created automatically; create it once in the
+    # console (http://127.0.0.1:9091) before starting langfuse-web/worker.
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC  # CHANGEME before real production use
+      RUSTFS_ACCESS_KEY: minio
+      RUSTFS_SECRET_KEY: LoBhexYsxsamQM8aLi8BneWNgfXEj4zC  # CHANGEME before real production use
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
     ports:
       - "9090:9000"          # must stay public — Langfuse's own docs require this for media uploads
       - "127.0.0.1:9091:9001"
     volumes:
       - langfuse_minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 1s
       timeout: 5s
       retries: 5
@@ -341,6 +345,7 @@ services:
 volumes:
   pg_data:
   minio_data:
+  rustfs_data:
   qdrant_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:

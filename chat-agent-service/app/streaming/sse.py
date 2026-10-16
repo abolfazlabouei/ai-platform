@@ -22,6 +22,7 @@ def _sse_frame(event_type: StreamEventType, data: dict) -> str:
 async def to_sse(event_stream, conversation_id: str | None = None):
     if conversation_id:
         yield _sse_frame(StreamEventType.CONVERSATION_INFO, {"conversation_id": conversation_id})
+    sent_images: set[str] = set()
     try:
         async for event in event_stream:
             kind = event.get("event")
@@ -46,6 +47,15 @@ async def to_sse(event_stream, conversation_id: str | None = None):
                     StreamEventType.TOOL_RESULT,
                     {"tool_name": event.get("name"), "output": str(event["data"].get("output"))},
                 )
+
+            # generate_image runs inside tool_exec_node (not as a LangChain tool), so
+            # images are picked up from that node's state update
+            elif kind == "on_chain_end" and event.get("name") == "tool_exec_node":
+                output = event["data"].get("output")
+                for img in (output or {}).get("generated_images", []) if isinstance(output, dict) else []:
+                    if img.get("media_id") not in sent_images:
+                        sent_images.add(img.get("media_id"))
+                        yield _sse_frame(StreamEventType.IMAGE, img)
 
             # LangGraph surfaces a paused graph (hitl_gate's interrupt()) as a special
             # event/task result rather than a normal node event; the exact shape depends

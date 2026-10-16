@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from shared_schemas.content_blocks import ContentBlock
+from app.core.media_types import AUDIO_FORMATS, IMAGE_MIMES, normalize_mime
+from shared_schemas.content_blocks import AudioBlock, ContentBlock, ImageBlock, TextBlock
+
+_INPUT_BLOCK_TYPES = (TextBlock, ImageBlock, AudioBlock)
 
 
 class ChatRequest(BaseModel):
@@ -17,6 +20,30 @@ class ChatRequest(BaseModel):
     knowledge_base_ids: list[str] = Field(default_factory=list)
     model_provider: str | None = None
     model_name: str | None = None
+
+    @field_validator("content_blocks")
+    @classmethod
+    def _validate_input_blocks(cls, blocks: list) -> list:
+        if not blocks:
+            raise ValueError("content_blocks must not be empty")
+        for b in blocks:
+            if not isinstance(b, _INPUT_BLOCK_TYPES):
+                raise ValueError(f"'{b.type}' blocks can't be sent as user input; use text, image or audio")
+            if isinstance(b, TextBlock):
+                continue
+            url = b.url or ""
+            if not b.media_id and not url.startswith("data:") and not (
+                isinstance(b, ImageBlock) and url.startswith(("http://", "https://"))
+            ):
+                raise ValueError(
+                    f"{b.type} block needs a media_id from /media/upload or a data: URL"
+                    + (" (or an http(s) URL)" if isinstance(b, ImageBlock) else "")
+                )
+            if b.mime:
+                allowed = IMAGE_MIMES if isinstance(b, ImageBlock) else AUDIO_FORMATS
+                if normalize_mime(b.mime) not in allowed:
+                    raise ValueError(f"Unsupported {b.type} type '{b.mime}'")
+        return blocks
 
 
 class ToolApprovalRequest(BaseModel):

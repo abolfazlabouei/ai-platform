@@ -43,7 +43,7 @@ type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; media_id?: string; url?: string; mime?: string }
   | { type: "audio"; media_id?: string; url?: string; mime?: string; duration_seconds?: number }
-  | { type: "generated_image"; url: string; mime: string; width?: number; height?: number; thumbnail_base64?: string; base64?: string }
+  | { type: "generated_image"; url: string; media_id?: string; mime: string; width?: number; height?: number; thumbnail_base64?: string; base64?: string }
   | { type: "tool_call"; tool_call_id: string; server_id: string; tool_name: string; arguments: object }
   | { type: "tool_result"; tool_call_id: string; tool_name: string; is_error: boolean; content: string | object }
 ```
@@ -51,19 +51,22 @@ type ContentBlock =
 **Sending an image/audio attachment:** upload it first, then reference it:
 ```
 1. POST /media/upload  (multipart/form-data, field name "file")
-   -> { "file": { "id": "...", "filename": "...", ... }, "job_id": "..." }
-2. Use that file's id as media_id in an image/audio content block:
-   { "type": "image", "media_id": "<file.id>" }
+   -> { "media_id": "uploads/<user>/<uuid>.png", "type": "image", "mime": "image/png", "url": "..." }
+2. Use that media_id in an image/audio content block:
+   { "type": "image", "media_id": "<media_id>" }
 ```
-The backend resolves `media_id` to a fetchable URL server-side before handing
-it to the model — the frontend never needs to construct that URL itself.
+Images: png, jpeg, webp, gif. Audio: wav, mp3, ogg, flac, aac, m4a (browser
+`audio/webm` recordings are not accepted; convert to wav/mp3 first). Max size:
+`MAX_MEDIA_UPLOAD_MB` (20MB). Image blocks may instead carry a public http(s)
+`url` (fetched by the model provider); either kind may carry a `data:` URL.
+Only `text`, `image` and `audio` blocks are accepted as user input.
 
-**Receiving a generated image:** the assistant's response may include a
-`generated_image` block. Render `url` directly (lazy-load the full image); use
-`thumbnail_base64` only if you want an instant tiny preview before `url`
-finishes loading. Full `base64` is omitted by default (keeps SSE payloads
-small) — request it explicitly by appending `?format=base64` to the relevant
-endpoint if you truly need the full image inlined instead of fetched by URL. If your response consistently needs full images inline (some clients can't do a follow-up fetch), let the backend team know so this can be turned on service-wide rather than per-request.
+**Receiving a generated image:** when the user asks for an image, the model
+calls the built-in `generate_image` tool (Nano Banana via OpenRouter, see
+`IMAGE_GEN_MODEL`). The stream emits an `image` SSE event with the
+`generated_image` block as soon as it is ready, and the block is saved on the
+assistant message. Render `url` directly. To edit an uploaded or generated
+image, just ask — the model passes its `media_id` to the tool as a reference.
 
 ---
 
@@ -98,6 +101,7 @@ Response — a stream of SSE frames, each `event: <type>\ndata: <json>\n\n`:
 | `tool_call` | `{"tool_name": "...", "input": {...}}` | model invoked a tool (already approved, no action needed from the UI beyond an optional "using tool X..." indicator) |
 | `tool_result` | `{"tool_name": "...", "output": "..."}` | that tool call finished |
 | `tool_approval_required` | `{"type": "tool_approval_required", "tool_calls": [{"id": "...", "name": "...", "arguments": {...}}]}` | **the graph is paused.** Show an approve/reject UI for each call, then call `/conversations/{id}/tool-approval` (see below) |
+| `image` | `{"type": "generated_image", "media_id": "...", "url": "...", "mime": "image/png"}` | a generated image is ready — render `url` |
 | `error` | `{"message": "..."}` | something failed; the stream ends after this |
 | `done` | `{}` | turn complete |
 
@@ -229,16 +233,13 @@ never needs knowledge-service's base URL directly.
 
 **`POST /media/upload`** — `multipart/form-data`, field name `file`. Returns:
 ```json
-{ "file": { "id": "...", "filename": "...", "mime": "image/png", "file_type": "docx", "size_bytes": 12345, "status": "uploaded", "error": null, "created_at": "...", "updated_at": "..." }, "job_id": "..." }
+{ "media_id": "uploads/local-user/3f0c...e1.png", "type": "image", "mime": "image/png", "url": "http://localhost:8101/api/v1/media/files/uploads/local-user/3f0c...e1.png" }
 ```
-Use `file.id` as `media_id` in a content block (see the Content Blocks section
-above). Ignore `job_id` here — that's for document *processing* status
-(extraction/chunking), not relevant to a raw chat attachment.
+`415` for unsupported types, `413` above `MAX_MEDIA_UPLOAD_MB`. Stored in
+chat-agent-service's own bucket (not file-processing-service, which only takes documents).
 
-**`GET /media/{media_id}`** — resolves to a presigned URL:
-```json
-{ "file_id": "...", "url": "https://...", "mime": "image/png" }
-```
+**`GET /media/files/{media_id}`** — serves the uploaded or generated file bytes
+(usable directly as an `<img>`/`<audio>` `src`; no auth, keys are unguessable).
 
 ---
 

@@ -47,6 +47,7 @@ class GeneratedImageBlock(BaseModel):
     """
     type: Literal["generated_image"] = "generated_image"
     url: str
+    media_id: str | None = None  # chat-agent-service media key; usable as a generate_image reference
     mime: str = "image/png"
     width: int | None = None
     height: int | None = None

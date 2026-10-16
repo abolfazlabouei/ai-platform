@@ -34,7 +34,6 @@ from app.graphs.nodes.hitl_gate import hitl_gate
 from app.graphs.nodes.input_normalizer import input_normalizer
 from app.graphs.nodes.knowledge_retrieval import knowledge_retrieval
 from app.graphs.nodes.llm_node import llm_node
-from app.graphs.nodes.output_formatter import output_formatter
 from app.graphs.nodes.tool_exec_node import tool_exec_node
 from app.graphs.state import GraphState
 
@@ -43,7 +42,7 @@ def _route_after_llm(state: GraphState) -> str:
     last_message = state["messages"][-1]
     tool_calls = getattr(last_message, "tool_calls", None) or []
     if not tool_calls:
-        return "output_formatter"
+        return END
 
     hitl_map = state["runtime"].get("tool_hitl_map", {})
     if any(hitl_map.get(tc["name"]) for tc in tool_calls):
@@ -77,7 +76,6 @@ async def get_compiled_graph() -> CompiledStateGraph:
     workflow.add_node("llm_node", llm_node)
     workflow.add_node("hitl_gate", hitl_gate)
     workflow.add_node("tool_exec_node", tool_exec_node)
-    workflow.add_node("output_formatter", output_formatter)
 
     workflow.set_entry_point("input_normalizer")
     workflow.add_edge("input_normalizer", "knowledge_retrieval")
@@ -89,12 +87,11 @@ async def get_compiled_graph() -> CompiledStateGraph:
         {
             "hitl_gate": "hitl_gate",
             "tool_exec_node": "tool_exec_node",
-            "output_formatter": "output_formatter",
+            END: END,
         },
     )
     workflow.add_edge("hitl_gate", "tool_exec_node")
     workflow.add_edge("tool_exec_node", "llm_node")
-    workflow.add_edge("output_formatter", END)
 
     checkpointer = await get_checkpointer()
     _compiled_graph_cache = workflow.compile(checkpointer=checkpointer)

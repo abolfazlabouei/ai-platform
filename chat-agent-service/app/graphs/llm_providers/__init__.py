@@ -23,7 +23,7 @@ def build_chat_model(provider: str, model: str, temperature: float = 0.7) -> Bas
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
-            model=model or "google/gemma-2-27b-it", 
+            model=model or settings.DEFAULT_MODEL_NAME,
             temperature=temperature,
             api_key=settings.OPENROUTER_API_KEY,
             base_url="https://openrouter.ai/api/v1",

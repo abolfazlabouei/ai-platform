@@ -5,12 +5,14 @@ belong in a separate test module once CI infra is wired up.
 """
 from langchain_core.messages import AIMessage
 
+from langgraph.graph import END
+
 from app.graphs.builder import _route_after_llm
 
 
-def test_route_after_llm_no_tool_calls_goes_to_output_formatter():
+def test_route_after_llm_no_tool_calls_ends_turn():
     state = {"messages": [AIMessage(content="hello")], "runtime": {"tool_hitl_map": {}}}
-    assert _route_after_llm(state) == "output_formatter"
+    assert _route_after_llm(state) == END
 
 
 def test_route_after_llm_with_non_hitl_tool_call_goes_to_tool_exec():

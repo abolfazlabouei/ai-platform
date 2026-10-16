@@ -3,7 +3,9 @@ llm_node.
 
 Builds the provider chat model (per runtime config), binds the approved MCP tools
 (already resolved by mcp_manager before the graph was invoked), prepends the system
-prompt (+ retrieved knowledge context if any), and invokes the model.
+prompt (+ retrieved knowledge context if any), inlines image/audio attachments
+(see services/media_resolver.py), and invokes the model. The built-in
+generate_image tool is bound alongside the MCP tools.
 
 The router (see builder.py conditional edge) inspects the returned AIMessage for
 tool_calls to decide whether to go to hitl_gate, tool_exec_node, or end the turn.
@@ -17,6 +19,8 @@ from langchain_core.messages import SystemMessage
 from app.core.config import settings
 from app.graphs.llm_providers import build_chat_model
 from app.graphs.state import GraphState
+from app.graphs.tools.image_tools import builtin_tools
+from app.services.media_resolver import inline_media
 
 _RAG_INSTRUCTIONS = """
 ## پاسخ‌گویی بر اساس اسناد
@@ -45,7 +49,7 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
         temperature=runtime.get("model_temperature", 0.7),
     )
 
-    bound_tools = runtime.get("bound_tools") or []
+    bound_tools = [*builtin_tools(), *(runtime.get("bound_tools") or [])]
     if bound_tools:
         model = model.bind_tools(bound_tools)
 
@@ -63,7 +67,8 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
         state_label = "NONE" if context is None else ("EMPTY" if context == "" else f"{len(context)} chars")
         print(f"[RAG DEBUG] llm_node context={state_label} model={runtime.get('model_provider')}/{runtime.get('model_name')}")
 
-    messages = [SystemMessage(content=system_prompt), *state["messages"]]
+    history = await inline_media(state["messages"])
+    messages = [SystemMessage(content=system_prompt), *history]
     ai_message = await model.ainvoke(messages)
 
     return {"messages": [ai_message]}

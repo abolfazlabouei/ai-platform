@@ -9,6 +9,7 @@ class SearchRequest(BaseModel):
     kb_ids: list[str]
     query: str
     top_k: int = 6
+    debug: bool = False
 
 
 class SearchResultItem(BaseModel):
@@ -22,3 +23,4 @@ class SearchResultItem(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SearchResultItem]
+    debug: dict | None = None

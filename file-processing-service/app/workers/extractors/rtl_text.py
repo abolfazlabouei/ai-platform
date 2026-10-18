@@ -59,21 +59,79 @@ def fix_rtl_line(words: list[str]) -> str:
     if not words:
         return ""
 
-    normalized_words = [unicodedata.normalize("NFKC", w) for w in words]
+    normalized_words = []
+    for word in words:
+        text = unicodedata.normalize("NFKC", word)
 
-    rtl_word_count = sum(1 for w in normalized_words if _is_rtl_word(w))
-    is_rtl_line = rtl_word_count > len(normalized_words) / 2
+        # Remove PDF Private Use Area characters such as U+F020.
+        text = "".join(
+            " " if unicodedata.category(ch) == "Co" else ch
+            for ch in text
+        )
 
-    if is_rtl_line:
-        normalized_words = list(reversed(normalized_words))
+        normalized_words.append(text.strip())
+
+    normalized_words = [w for w in normalized_words if w]
 
     return " ".join(normalized_words)
 
 
-def fix_rtl_cell(cell: str | None) -> str | None:
-    """Same fix applied to a table cell string (split on whitespace as a
-    single-line word sequence). Passes through None unchanged — table_chunker
-    already handles None cells from PyMuPDF's table extraction."""
-    if cell is None or not isinstance(cell, str):
-        return cell
-    return fix_rtl_line(cell.split())
+def fix_rtl_cell(cell: str) -> str:
+    if not cell:
+        return ""
+
+    cell = unicodedata.normalize("NFKC", cell)
+
+    # Remove Private Use Area characters.
+    cell = "".join(
+        ch for ch in cell
+        if unicodedata.category(ch) != "Co"
+    )
+
+    # Remove placeholder/dot-only noise.
+    if cell and all(ch in ".·• " for ch in cell):
+        return ""
+
+    fixed_lines = []
+    for line in cell.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        tokens = line.split()
+
+        rtl_count = sum(
+            1
+            for ch in line
+            if unicodedata.bidirectional(ch) in {"R", "AL"}
+        )
+        ltr_count = sum(
+            1
+            for ch in line
+            if unicodedata.bidirectional(ch) == "L"
+        )
+
+        is_rtl = rtl_count > ltr_count
+        if is_rtl:
+            fixed_tokens = []
+            for token in tokens:
+                token_rtl = sum(
+                    1
+                    for ch in token
+                    if unicodedata.bidirectional(ch) in {"R", "AL"}
+                )
+
+                if token_rtl > len(token) / 2:
+                    token = token[::-1]
+
+                fixed_tokens.append(token)
+            # PDF stores this table text in visual order.
+            fixed_tokens.reverse()
+            line = " ".join(fixed_tokens)
+        else:
+            line = " ".join(tokens)
+
+        if line and not all(ch in ".·• " for ch in line):
+            fixed_lines.append(line)
+
+    return "\n".join(fixed_lines)

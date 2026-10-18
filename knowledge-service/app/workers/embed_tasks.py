@@ -18,12 +18,14 @@ import uuid
 
 from app.models.job import Job, JobStage
 from app.models.kb_source import IngestStatus, KBSource
+from app.models.kb_chunk import KBChunk
 from app.services.embedding_service import embed_texts_sync
 from app.services.file_client import get_chunks_sync
 from app.services.progress_publisher import publish_progress_sync
 from app.services.vector_store import upsert_vectors_sync
 from app.workers.celery_app import celery_app
 from app.workers.db import SyncSessionLocal
+from app.services.text_normalize import has_enough_text, is_likely_toc, normalize_text
 
 
 @celery_app.task(name="embed_kb_source", bind=True)
@@ -43,6 +45,19 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
             publish_progress_sync(job_id, "embedding", 10, "Fetching chunks from file-processing-service")
 
             chunks = get_chunks_sync(str(kb_source.file_id))
+            for c in chunks:
+                c["content"] = normalize_text(c.get("content"))
+
+            chunks = [
+                c
+                for c in chunks
+                if has_enough_text(c.get("content"))
+                and not (
+                    str(c.get("type") or "text").lower() == "text"
+                    and is_likely_toc(c.get("content"))
+                )
+            ]
+
             if not chunks:
                 kb_source.status = IngestStatus.DONE
                 job_row.stage = JobStage.DONE
@@ -55,8 +70,9 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
             publish_progress_sync(job_id, "embedding", 30, f"Embedding {len(texts)} chunks")
             vectors = embed_texts_sync(texts)
 
-            # --- stage: upsert into vector store ---
+            # --- stage: upsert into vector store + mirror into Postgres for lexical search ---
             points = []
+            kb_chunk_rows = []
             for chunk, vector in zip(chunks, vectors, strict=True):
                 points.append(
                     {
@@ -71,7 +87,18 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
                         },
                     }
                 )
+                kb_chunk_rows.append(
+                    KBChunk(
+                        knowledge_base_id=kb_source.knowledge_base_id,
+                        file_id=uuid.UUID(str(chunk["file_id"])),
+                        chunk_id=uuid.UUID(str(chunk["id"])),
+                        content=chunk["content"],
+                        type=chunk["type"],
+                        order_index=chunk["order_index"],
+                    )
+                )
             upsert_vectors_sync(str(kb_source.knowledge_base_id), points)
+            session.add_all(kb_chunk_rows)
             publish_progress_sync(job_id, "embedding", 90, "Upserted vectors into Qdrant")
 
             # --- stage: done ---

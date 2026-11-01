@@ -108,6 +108,26 @@ input_normalizer → [knowledge_retrieval?] → llm_node
 
 ---
 
+### Code execution (code-sandbox-service)
+
+سرویس جداگانه‌ای که به Agent ها اجازه می‌دهد کد Python بنویسند و اجرا کنند، بدون اینکه کد بتواند به host یا سرویس‌های دیگر آسیب بزند. به‌صورت **MCP server** (`/mcp`) به chat-agent-service وصل می‌شود، پس همان مسیر approval / HITL / tracing ابزارهای MCP روی آن هم اعمال می‌شود.
+
+- هر conversation یک container ایزوله (gVisor، `network=none`، rootfs فقط‌خواندنی، tmpfs برای `/workspace`، محدودیت CPU/RAM/pid/زمان/خروجی) با workspace پایدار تا پایان session.
+- هویت فقط از هدر امضاشدهٔ `X-Sandbox-Context` (JWT کوتاه‌عمر که chat-agent-service می‌سازد) می‌آید؛ هیچ tool ای `user_id`/`conversation_id` به‌عنوان آرگومان نمی‌گیرد.
+- ورود/خروج فایل فقط از طریق control plane است (سندباکس هیچ credential ای ندارد): ورودی از file-processing-service، خروجی (`/workspace/outputs/`) به MinIO با presigned URL.
+- Docker socket فقط در همین سرویس mount می‌شود و سرویس هیچ پورتی روی host ندارد. جزئیات: `code-sandbox-service/README.md`.
+
+### مهارت‌ها (Agent Skills) — در chat-agent-service
+
+مهارت = یک پوشه دستورالعمل (`SKILL.md` با frontmatter شامل `name` و `description` + فایل‌های مرجع + اسکریپت اختیاری) که به Agent یاد می‌دهد یک نوع کار را خوب انجام دهد. نسخه‌ها immutable هستند (ویرایش = نسخهٔ N+1) و Agent با `skill_ids: [{skill_id, version|null}]` به آن‌ها وصل می‌شود (`null` = همیشه آخرین نسخه).
+
+**افشای تدریجی (progressive disclosure):** مدل فقط `name` + `description` مهارت‌ها را در system prompt می‌بیند (سطح ۱)؛ با `skill_load` متن کامل را می‌گیرد (سطح ۲)؛ با `skill_read_file` فایل مرجع و با `skill_run_script` خروجی اسکریپت را (سطح ۳). پس **description تعیین می‌کند مهارت اصلاً استفاده شود یا نه.**
+
+- ابزارهای `skill_*` داخلی‌اند (نه MCP) و per-request از داده‌ی ساده‌ی `RuntimeConfig.skills` ساخته می‌شوند؛ فقط به مهارت‌های همین Agent دسترسی دارند. `tool_exec_node` اول `internal_tools` را چک می‌کند و بعد MCP را.
+- فایل‌ها در MinIO (bucket `skills`)، متن SKILL.md در Postgres. بسته‌ی zip با بررسی zip-slip، zip-bomb، symlink، تعداد/حجم فایل و نوع فایل اعتبارسنجی می‌شود (`app/skills/package.py`).
+- اسکریپت‌ها **فقط** در `code-sandbox-service` اجرا می‌شوند (`SKILLS_SCRIPTS_ENABLED=true`)، همیشه با تأیید انسانی (HITL) به‌صورت پیش‌فرض، و آرگومان‌ها به‌صورت داده (نه کد) به اسکریپت می‌رسند.
+- مهارت دستور است، پس کانال prompt-injection هم هست: فقط مالک می‌تواند مهارت خودش را وصل کند، و کلید `allowed-tools` در frontmatter ذخیره می‌شود اما **اعمال نمی‌شود** (مهارت مجوز جدید نمی‌دهد).
+
 ## 3. file-processing-service
 
 آپلود → ذخیره raw file در object storage → Celery task غیرمسدودکننده (`job_id` فوری برمی‌گرده) → مراحل `extracting → chunking → done/failed` که هرکدوم پیشرفتشون در کانال Redis `job:{job_id}` publish میشه → API با SSE از همون کانال subscribe و forward می‌کنه.

@@ -23,6 +23,10 @@ class RuntimeConfig(TypedDict, total=False):
     knowledge_base_ids: list[str]
     bound_tools: list[Any]
     tool_hitl_map: dict[str, bool]
+    # Agent skills (plain data only, so it survives checkpoint/resume): attached, enabled skills and the
+    # level-1 catalog text for the system prompt. See app/skills/.
+    skills: list[dict]
+    skills_catalog: str
 
 
 class GraphState(TypedDict, total=False):

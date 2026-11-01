@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # --- MCP ---
     MCP_CONNECT_TIMEOUT_SECONDS: int = 15
     MCP_TOOL_CALL_TIMEOUT_SECONDS: int = 60
+    # Shared with code-sandbox-service (MCP servers with auth_config {"type": "sandbox"}):
+    # the key authenticates this service; the context secret signs the per-conversation JWT.
+    SANDBOX_SHARED_SECRET: str = ""
+    SANDBOX_CONTEXT_SECRET: str = ""
+    # REST base URL of code-sandbox-service, used by skill_run_script (SKILLS_SCRIPTS_ENABLED)
+    SANDBOX_BASE_URL: str = "http://code-sandbox-service:8000"
+    SANDBOX_REQUEST_TIMEOUT_SECONDS: int = 180
 
     # --- Streaming / concurrency ---
     SSE_KEEPALIVE_SECONDS: int = 15
@@ -83,6 +90,23 @@ class Settings(BaseSettings):
     RAG_QUERY_REWRITE: bool = True
     RAG_DEBUG: bool = True
     
+    # --- Agent skills (see app/skills/) ---
+    SKILLS_BUCKET: str = "skills"
+    SKILLS_MAX_PER_AGENT: int = 20
+    SKILLS_MAX_ZIP_MB: int = 10
+    SKILLS_MAX_UNCOMPRESSED_MB: int = 25
+    SKILLS_MAX_FILES: int = 100
+    SKILLS_MAX_BODY_KB: int = 50
+    SKILLS_MAX_ASSET_MB: int = 5
+    # Level-1 catalog budget in the system prompt; skills past it are left out (with a note).
+    SKILLS_CATALOG_MAX_CHARS: int = 16000
+    SKILLS_READ_FILE_MAX_BYTES: int = 64 * 1024
+    # Phase 2 switch: skill_run_script via code-sandbox-service.
+    SKILLS_SCRIPTS_ENABLED: bool = False
+    # Browser-reachable S3 endpoint used only to sign download links for binary skill files.
+    S3_PUBLIC_BASE_URL: str = "http://localhost:9010"
+    SKILLS_FILE_URL_TTL_SECONDS: int = 3600
+
     # --- Observability (Langfuse) ---
     LANGFUSE_ENABLED: bool = False
     LANGFUSE_PUBLIC_KEY: str | None = None

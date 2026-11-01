@@ -22,6 +22,7 @@ from app.schemas.chat import ChatCompleteResponse, ChatRequest
 from app.services.agent_service import AgentService
 from app.services.chat_service import ChatService
 from app.services.conversation_service import ConversationService
+from app.services.skill_service import SkillService
 from app.streaming.sse import to_sse
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -36,6 +37,7 @@ def _to_agent_out(agent) -> AgentOut:
         model_config=agent.model_config_json,
         mcp_server_ids=agent.mcp_server_ids,
         knowledge_base_ids=agent.knowledge_base_ids,
+        skill_ids=agent.skill_ids or [],
         tool_policy=agent.tool_policy,
         capabilities=agent.capabilities,
         is_composable=agent.is_composable,
@@ -48,6 +50,7 @@ def _to_agent_out(agent) -> AgentOut:
 async def create_agent(
     body: AgentCreate, user: CurrentUser = Depends(require_user), db: AsyncSession = Depends(get_db)
 ):
+    skill_ids = await SkillService(db).validate_refs(user.user_id, [r.model_dump(mode="json") for r in body.skill_ids])
     service = AgentService(db)
     agent = await service.create(
         user_id=user.user_id,
@@ -57,6 +60,7 @@ async def create_agent(
         model_config=body.model_config_.model_dump(),
         mcp_server_ids=[str(i) for i in body.mcp_server_ids],
         knowledge_base_ids=body.knowledge_base_ids,
+        skill_ids=skill_ids,
         tool_policy=[{**t.model_dump(), "server_id": str(t.server_id)} for t in body.tool_policy],
         capabilities=body.capabilities,
         is_composable=body.is_composable,
@@ -86,7 +90,9 @@ async def get_agent(agent_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
-async def update_agent(agent_id: uuid.UUID, body: AgentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_agent(
+    agent_id: uuid.UUID, body: AgentUpdate, user: CurrentUser = Depends(require_user), db: AsyncSession = Depends(get_db)
+):
     service = AgentService(db)
     agent = await service.get(agent_id)
     if not agent:
@@ -98,6 +104,13 @@ async def update_agent(agent_id: uuid.UUID, body: AgentUpdate, db: AsyncSession 
         # ModelConfigIn) into plain dicts — calling .model_dump() on them again
         # fails with AttributeError since dicts don't have that method.
         fields["model_config"] = fields.pop("model_config_")
+    if "skill_ids" in fields and fields["skill_ids"] is None:
+        del fields["skill_ids"]  # null means 'unchanged', the column is NOT NULL
+    if fields.get("skill_ids") is not None:
+        # re-dump through the schema: model_dump() above leaves UUIDs, and refs must belong to this user
+        fields["skill_ids"] = await SkillService(db).validate_refs(
+            user.user_id, [r.model_dump(mode="json") for r in body.skill_ids or []]
+        )
     if "mcp_server_ids" in fields and fields["mcp_server_ids"] is not None:
         fields["mcp_server_ids"] = [str(i) for i in fields["mcp_server_ids"]]
     if "tool_policy" in fields and fields["tool_policy"] is not None:

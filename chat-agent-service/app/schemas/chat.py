@@ -5,6 +5,7 @@ import uuid
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.skill import SkillRef
 from app.core.media_types import AUDIO_FORMATS, IMAGE_MIMES, normalize_mime
 from shared_schemas.content_blocks import AudioBlock, ContentBlock, ImageBlock, TextBlock
 
@@ -18,6 +19,7 @@ class ChatRequest(BaseModel):
     # Only meaningful for ad-hoc chat (ignored/overridable-by-admin on agent chat):
     mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     knowledge_base_ids: list[str] = Field(default_factory=list)
+    skill_ids: list[SkillRef] = Field(default_factory=list)
     model_provider: str | None = None
     model_name: str | None = None
 

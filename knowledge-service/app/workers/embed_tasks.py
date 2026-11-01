@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import delete
+
 from app.models.job import Job, JobStage
+from app.models.kb_chunk import KBChunk
 from app.models.kb_source import IngestStatus, KBSource
 from app.services.embedding_service import embed_texts_sync
 from app.services.file_client import get_chunks_sync
 from app.services.progress_publisher import publish_progress_sync
+from app.services.text_normalize import has_enough_text, is_likely_toc, normalize_text
 from app.services.vector_store import delete_by_file_sync, point_id_for, upsert_vectors_sync
 from app.workers.celery_app import celery_app
 from app.workers.db import SyncSessionLocal
@@ -50,8 +54,17 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
                 publish_progress_sync(job_id, "done", 100, "No chunks found for this file")
                 return
 
-            # empty chunks can't be embedded (and carry no information anyway)
-            chunks = [c for c in chunks if (c.get("content") or "").strip()]
+            # Normalize (Arabic/Persian letter variants, digits, ZWNJ…) so ingest and
+            # query time see the same characters, then drop chunks with no retrievable
+            # content (empty / table-of-contents).
+            for c in chunks:
+                c["content"] = normalize_text(c.get("content"))
+            chunks = [
+                c
+                for c in chunks
+                if has_enough_text(c.get("content"))
+                and not (str(c.get("type") or "text").lower() == "text" and is_likely_toc(c["content"]))
+            ]
 
             # --- stage: embed ---
             texts = [c["content"] for c in chunks]
@@ -82,6 +95,26 @@ def embed_kb_source(self, kb_source_id: str, job_id: str) -> None:
             # duplicate vectors behind — duplicates crowd the top-k with copies.
             delete_by_file_sync(kb_id, str(kb_source.file_id))
             upsert_vectors_sync(kb_id, points)
+
+            # Mirror the chunk text into Postgres for lexical search (same re-ingest
+            # rule: replace this file's rows in this KB, never append duplicates).
+            session.execute(
+                delete(KBChunk).where(
+                    KBChunk.knowledge_base_id == kb_source.knowledge_base_id,
+                    KBChunk.file_id == kb_source.file_id,
+                )
+            )
+            session.add_all(
+                KBChunk(
+                    knowledge_base_id=kb_source.knowledge_base_id,
+                    file_id=uuid.UUID(str(chunk["file_id"])),
+                    chunk_id=uuid.UUID(str(chunk["id"])),
+                    content=chunk["content"],
+                    type=chunk.get("type"),
+                    order_index=chunk.get("order_index"),
+                )
+                for chunk in chunks
+            )
             publish_progress_sync(job_id, "embedding", 90, "Upserted vectors into Qdrant")
 
             # --- stage: done ---

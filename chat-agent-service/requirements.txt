@@ -8,7 +8,8 @@ starlette==0.41.3
 langgraph==0.2.62
 langgraph-checkpoint-postgres==2.0.13
 langchain-core>=0.3.36,<0.4
-langchain-mcp-adapters==0.0.5
+langchain-mcp-adapters==0.1.14  # 0.0.5 has no streamable-http transport and a sync get_tools()
+mcp==1.30.0  # adapter 0.1.x accepts any mcp>=1.9.2; pin to 1.x (mcp 2.x breaks langchain imports)
 langchain-anthropic==0.3.4
 langchain-openai==0.3.35  # 0.3.1 passed langchain-core's standard audio blocks through unconverted, so OpenRouter dropped input_audio
 
@@ -27,11 +28,14 @@ pyjwt==2.10.1
 # --- Object storage ---
 boto3==1.35.90
 
+# --- Agent skills (SKILL.md frontmatter; always yaml.safe_load) ---
+pyyaml==6.0.2
+
 # --- Images ---
 pillow==11.1.0
 
 # --- Config / utils ---
-pydantic==2.10.4
+pydantic>=2.11.0,<3.0.0
 pydantic-settings==2.7.1
 httpx==0.28.1
 
@@ -41,6 +45,7 @@ httpx==0.28.1
 
 pytest-asyncio
 pytest
+aiosqlite  # unit tests run the SQLAlchemy models on in-memory SQLite
 
 langfuse==4.14.5
 langchain==0.3.25

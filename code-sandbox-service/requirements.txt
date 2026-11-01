@@ -1,0 +1,35 @@
+# --- Web framework ---
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+starlette==1.10.0
+
+# --- MCP server (v2 API: mcp.server.mcpserver) ---
+mcp==2.3.0
+
+# --- Docker control ---
+docker==7.1.0
+
+# --- DB ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# --- Redis ---
+redis==5.2.1
+
+# --- Auth (signed context headers) ---
+pyjwt==2.15.1
+
+# --- Object storage ---
+boto3==1.35.90
+
+# --- HTTP client (file-processing-service) ---
+httpx==0.28.1
+
+# --- Config / utils ---
+pydantic==2.14.1  # mcp 2.x needs >=2.12
+pydantic-settings==2.16.1
+
+# --- Tests ---
+pytest==8.3.4
+pytest-asyncio==0.25.0

@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.graphs.llm_providers import build_chat_model
 from app.graphs.state import GraphState
 from app.graphs.tools.image_tools import builtin_tools
+from app.internal_tools.registry import get_internal_tools
 from app.services.media_resolver import inline_media
 
 _RAG_INSTRUCTIONS = """
@@ -49,11 +50,14 @@ async def llm_node(state: GraphState) -> dict[str, Any]:
         temperature=runtime.get("model_temperature", 0.7),
     )
 
-    bound_tools = [*builtin_tools(), *(runtime.get("bound_tools") or [])]
+    internal_tools = get_internal_tools(runtime)
+    bound_tools = [*builtin_tools(), *(runtime.get("bound_tools") or []), *internal_tools.values()]
     if bound_tools:
         model = model.bind_tools(bound_tools)
 
     system_prompt = runtime.get("system_prompt") or "You are a helpful assistant."
+    if runtime.get("skills_catalog"):  # level 1 of skills: names + descriptions only
+        system_prompt = f"{system_prompt}\n\n{runtime['skills_catalog']}"
 
     # retrieved_context: None = no knowledge base on this request; "" = searched,
     # nothing found; str = sources (see knowledge_retrieval.py)

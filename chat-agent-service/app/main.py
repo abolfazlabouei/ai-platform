@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
@@ -20,12 +21,14 @@ from app.api.v1 import (
     knowledge_proxy,
     mcp_servers,
     media,
+    skills,
     tool_approval,
     auth
 )
 from app.checkpointer.postgres_saver import close_checkpointer, get_checkpointer
 from app.core.config import settings
 from app.core.redis_client import close_redis, get_redis
+from app.skills.errors import SkillConflict, SkillNotFound, SkillValidationError
 
 
 @asynccontextmanager
@@ -68,6 +71,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(SkillValidationError)
+async def _skill_invalid(_: Request, exc: SkillValidationError):
+    return JSONResponse({"detail": "; ".join(exc.errors), "errors": exc.errors}, status_code=422)
+
+
+@app.exception_handler(SkillNotFound)
+async def _skill_missing(_: Request, exc: SkillNotFound):
+    return JSONResponse({"detail": str(exc) or "skill not found"}, status_code=404)
+
+
+@app.exception_handler(SkillConflict)
+async def _skill_conflict(_: Request, exc: SkillConflict):
+    return JSONResponse({"detail": str(exc)}, status_code=409)
+
+
 API_PREFIX = "/api/v1"
 app.include_router(health.router)
 app.include_router(chat.router, prefix=API_PREFIX)
@@ -77,5 +95,6 @@ app.include_router(mcp_servers.router, prefix=API_PREFIX)
 app.include_router(tool_approval.router, prefix=API_PREFIX)
 app.include_router(knowledge_proxy.router, prefix=API_PREFIX)
 app.include_router(media.router, prefix=API_PREFIX)
+app.include_router(skills.router, prefix=API_PREFIX)
 app.include_router(channel_identities.router, prefix=API_PREFIX)
 app.include_router(auth.router, prefix=API_PREFIX)

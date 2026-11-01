@@ -25,13 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.graphs.builder import get_compiled_graph
 from app.graphs.state import RuntimeConfig
-from app.mcp_manager.client_pool import McpClientPool
+from app.mcp_manager.client_pool import McpClientPool, to_tool_schema
 from app.mcp_manager.tool_registry import build_hitl_map, get_approved_tools
 from app.models.agent import Agent
 from app.models.mcp_server import McpServer
 from app.models.message import MessageRole
 from app.repositories.mcp_repo import McpRepo
 from app.services.conversation_service import ConversationService
+from app.services.skill_service import SkillService
+from app.skills.catalog import SKILL_RUN_SCRIPT_TOOL, build_catalog
 from app.services.title_service import generate_title
 
 
@@ -51,9 +53,17 @@ class ChatService:
         model_provider: str | None,
         model_name: str | None,
         system_prompt_override: str | None,
+        skill_refs: list[dict] | None = None,
     ) -> RuntimeConfig:
         approved_tools = await get_approved_tools(self.db, mcp_server_ids)
         hitl_map = build_hitl_map(approved_tools)
+
+        # Skills: an agent always uses its own; ad-hoc chat uses the request's. Missing/disabled ones are skipped.
+        skills = await SkillService(self.db).resolve_for_runtime(
+            user_id, agent.skill_ids if agent else skill_refs
+        )
+        if skills:
+            hitl_map.setdefault(SKILL_RUN_SCRIPT_TOOL, True)  # scripts need approval until trusted
 
         servers: list[McpServer] = []
         for server_id in {t.mcp_server_id for t in approved_tools}:
@@ -63,7 +73,17 @@ class ChatService:
 
         pool = McpClientPool()
         approved_names = {t.tool_name for t in approved_tools}
-        bound_tools = await pool.as_langchain_tools(servers, approved_names) if servers else []
+        # plain-data schemas, not tool objects: the runtime is checkpointed (see to_tool_schema)
+        bound_tools = (
+            [
+                to_tool_schema(t)
+                for t in await pool.as_langchain_tools(
+                    servers, approved_names, conversation_id=str(conversation_id), user_id=user_id
+                )
+            ]
+            if servers
+            else []
+        )
 
         if agent:
             provider = model_provider or agent.model_config_json.get("provider", settings.DEFAULT_MODEL_PROVIDER)
@@ -87,6 +107,8 @@ class ChatService:
             knowledge_base_ids=knowledge_base_ids,
             bound_tools=bound_tools,
             tool_hitl_map=hitl_map,
+            skills=skills,
+            skills_catalog=build_catalog(skills),
         )
 
     async def run_turn(
@@ -100,6 +122,7 @@ class ChatService:
         model_provider: str | None = None,
         model_name: str | None = None,
         system_prompt_override: str | None = None,
+        skill_refs: list[dict] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Async generator yielding raw LangGraph stream events. The API layer's SSE
@@ -128,6 +151,7 @@ class ChatService:
             model_provider,
             model_name,
             system_prompt_override,
+            skill_refs,
         )
 
         graph = await get_compiled_graph()

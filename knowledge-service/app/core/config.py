@@ -48,6 +48,27 @@ class Settings(BaseSettings):
 
     DEFAULT_SEARCH_TOP_K: int = 6
 
+    # --- Hybrid search (dense Qdrant + lexical Postgres FTS, fused via RRF) ---
+    HYBRID_SEARCH_ENABLED: bool = True
+    DENSE_TOP_K: int = 50
+    LEXICAL_TOP_K: int = 50
+    LEXICAL_PHRASE_BOOST: float = 2.0
+    RRF_K: int = 60
+    RRF_DENSE_WEIGHT: float = 1.0
+    RRF_LEXICAL_WEIGHT: float = 1.5
+
+    # --- Reranking (optional; off by default) ---
+    # "openrouter_api" needs only RERANK_API_KEY. "local" needs  (pulls in torch) and a multilingual model for Persian.
+    ENABLE_RERANK: bool = False
+    RERANK_BACKEND: Literal["local", "openrouter_api"] = "openrouter_api"
+    RERANK_CANDIDATE_K: int = 25
+    RERANK_MODEL: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # local backend
+    RERANK_BATCH_SIZE: int = 32
+    RERANK_API_KEY: str | None = None
+    RERANK_API_URL: str = "https://openrouter.ai/api/v1/rerank"
+    RERANK_API_MODEL: str = "cohere/rerank-v3.5"
+    RERANK_API_TIMEOUT_SECONDS: float = 60.0
+
 
 @lru_cache
 def get_settings() -> Settings:

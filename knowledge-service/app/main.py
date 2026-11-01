@@ -14,7 +14,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import ingest, jobs, knowledge_bases, search, health
+from app.core.config import settings
 from app.core.redis_client import close_redis, get_redis
+from app.services import reranker
 
 
 @asynccontextmanager
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI):
     # Schema is managed by Alembic (see app/db/migrations) — run `alembic upgrade
     # head` before starting the service.
     get_redis()
+    if settings.ENABLE_RERANK:
+        reranker.warm_up()  # best-effort; never blocks startup
     yield
     await close_redis()
 

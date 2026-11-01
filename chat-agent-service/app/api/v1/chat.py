@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.schemas.chat import ChatCompleteResponse, ChatRequest
 from app.services.chat_service import ChatService
 from app.services.conversation_service import ConversationService
+from app.services.skill_service import SkillService
 from app.streaming.sse import to_sse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -36,10 +37,18 @@ async def _prepare_conversation(req: ChatRequest, user: CurrentUser, db: AsyncSe
     return conv.id
 
 
+async def _skill_refs(req: ChatRequest, user: CurrentUser, db: AsyncSession) -> list[dict]:
+    """Ad-hoc chat: skills the caller attached to this request (must be theirs; 404 otherwise)."""
+    if not req.skill_ids:
+        return []
+    return await SkillService(db).validate_refs(user.user_id, [r.model_dump(mode="json") for r in req.skill_ids])
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest, user: CurrentUser = Depends(require_user), db: AsyncSession = Depends(get_db)
 ):
+    skill_refs = await _skill_refs(req, user, db)  # before _prepare_conversation: a rejected request must not leave a conversation behind
     conversation_id = await _prepare_conversation(req, user, db)
     chat_service = ChatService(db)
 
@@ -52,6 +61,7 @@ async def chat_stream(
         knowledge_base_ids=req.knowledge_base_ids,
         model_provider=req.model_provider,
         model_name=req.model_name,
+        skill_refs=skill_refs,
     )
     return StreamingResponse(to_sse(event_stream, conversation_id=str(conversation_id)), media_type="text/event-stream")
 
@@ -60,6 +70,7 @@ async def chat_stream(
 async def chat_complete(
     req: ChatRequest, user: CurrentUser = Depends(require_user), db: AsyncSession = Depends(get_db)
 ):
+    skill_refs = await _skill_refs(req, user, db)  # before _prepare_conversation: a rejected request must not leave a conversation behind
     conversation_id = await _prepare_conversation(req, user, db)
     chat_service = ChatService(db)
 
@@ -72,6 +83,7 @@ async def chat_complete(
         knowledge_base_ids=req.knowledge_base_ids,
         model_provider=req.model_provider,
         model_name=req.model_name,
+        skill_refs=skill_refs,
     )
     async for _ in event_stream:
         pass  # drain — chat_service persists the assistant message as a side effect

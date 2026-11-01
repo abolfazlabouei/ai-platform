@@ -34,6 +34,9 @@ class Agent(Base):
     mcp_server_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     knowledge_base_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
+    # [{"skill_id": "...", "version": int | null}] — null follows the skill's latest version
+    skill_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     # [{"server_id": "...", "tool_name": "...", "status": "approved|rejected", "requires_hitl": bool}]
     tool_policy: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 

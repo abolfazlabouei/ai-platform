@@ -165,6 +165,51 @@ services:
     env_file: ./knowledge-service/.env
 
   # =========================================================================
+  # code-sandbox-service — isolated code execution for agents (MCP server at
+  # /mcp + REST at /api/v1). It is the ONLY container that talks to the Docker
+  # daemon, and the Docker socket is root-equivalent on the host, so:
+  #   - NO "ports:" — reachable only from this compose network
+  #   - read_only rootfs, non-root user, socket is the only mount
+  #   - sandboxes themselves run with network_mode=none (never on this network)
+  #
+  # One-time setup on the host:
+  #   1. gVisor registered as docker runtime "runsc" (SANDBOX_RUNTIME in its .env)
+  #   2. docker compose --profile build build sandbox-python-image
+  #   3. DOCKER_GID=$(getent group docker | cut -d: -f3)   # exported or in root .env
+  # Then register it in chat-agent-service: POST /api/v1/mcp-servers with
+  #   transport=streamable_http, url=http://code-sandbox-service:8000/mcp,
+  #   auth_config={"type": "sandbox"}.
+  # =========================================================================
+  code-sandbox-service:
+    build:
+      context: .
+      dockerfile: code-sandbox-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file: ./code-sandbox-service/.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add: ["${DOCKER_GID:-999}"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # no "ports:" on purpose
+
+  # Builds the sandbox image used by run_python. Not started by `up`; run
+  #   docker compose --profile build build sandbox-python-image
+  sandbox-python-image:
+    build: ./code-sandbox-service/images/python
+    image: ai-platform-sandbox-python:1
+    profiles: ["build"]
+    entrypoint: ["true"]
+
+  # =========================================================================
   # Self-hosted Langfuse (v3) — LLM tracing/observability, consumed by
   # chat-agent-service's app/observability/langfuse_client.py.
   #
